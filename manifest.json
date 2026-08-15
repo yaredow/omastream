@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "user.omastream",
+  "name": "omaStream",
+  "version": "0.1.0",
+  "author": "yada",
+  "license": "MIT",
+  "description": "Quickshell video & audio downloader overlay powered by yt-dlp",
+  "homepage": "https://github.com/robzolkos/omarchy-skill",
+  "kinds": [
+    "bar-widget",
+    "overlay"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml",
+    "overlay": "OmaStreamOverlay.qml"
+  },
+  "barWidget": {
+    "displayName": "omaStream",
+    "description": "Open video downloader overlay",
+    "category": "Media",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

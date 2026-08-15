@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# omaStream helper script wrapper for yt-dlp
+echo "omaStream backend initialized"
