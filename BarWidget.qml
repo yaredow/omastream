@@ -15,8 +15,8 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "\uf019"
-    tooltipText: "omaStream Video Downloader"
+    text: "\uf03d" // Video camera / stream icon
+    tooltipText: "omaStream YouTube Search & Player"
 
     onPressed: function(mouseButton) {
       if (!root.bar) return
