@@ -94,14 +94,16 @@ Item {
         anchors.margins: Style.space(20)
         spacing: Style.space(16)
 
-        // Header Navigation Bar
-        Row {
+        // Header Navigation Bar Container (Anchored Left & Right)
+        Item {
           width: parent.width
+          height: Style.space(36)
 
-          // Brand title & icon
+          // Brand title & icon (Left aligned)
           Row {
-            spacing: 8
+            anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
 
             Text {
               text: "\uf03d" // NerdFont Video Camera
@@ -138,18 +140,14 @@ Item {
             }
           }
 
-          Item {
-            width: parent.width - 360
-            height: 1
-          }
-
-          // Segmented Tab Controls
+          // Segmented Tab Controls (Right aligned)
           Rectangle {
-            height: Style.space(36)
-            width: Style.space(200)
-            radius: Style.space(18)
-            color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.08)
+            anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
+            height: Style.space(34)
+            width: Style.space(210)
+            radius: Style.space(17)
+            color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.08)
 
             Row {
               anchors.fill: parent
@@ -158,12 +156,12 @@ Item {
               Rectangle {
                 width: (parent.width) / 2
                 height: parent.height
-                radius: Style.space(15)
+                radius: Style.space(14)
                 color: root.activeTab === 0 ? Color.accent : "transparent"
 
                 Text {
                   anchors.centerIn: parent
-                  text: "\uf002 Search" // NerdFont Search
+                  text: "\uf002 Search"
                   font.family: Style.font.family
                   color: root.activeTab === 0 ? "#ffffff" : Color.menu.text
                   font.pixelSize: 12
@@ -180,12 +178,12 @@ Item {
               Rectangle {
                 width: (parent.width) / 2
                 height: parent.height
-                radius: Style.space(15)
+                radius: Style.space(14)
                 color: root.activeTab === 1 ? Color.accent : "transparent"
 
                 Text {
                   anchors.centerIn: parent
-                  text: "\uf013 Server" // NerdFont Cog
+                  text: "\uf013 Server"
                   font.family: Style.font.family
                   color: root.activeTab === 1 ? "#ffffff" : Color.menu.text
                   font.pixelSize: 12
