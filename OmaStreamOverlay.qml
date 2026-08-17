@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls as QQC
 import Quickshell
+import Quickshell.Wayland
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
@@ -20,13 +21,20 @@ Item {
   readonly property string mpvScriptPath: Qt.resolvedUrl("scripts/omastream-mpv").toString().replace(/^file:\/\//, "")
 
   function open(payloadJson) {
-    opened = true
+    root.opened = true
     loadMockData("")
   }
 
   function close() {
-    opened = false
-    if (shell) shell.toggle("user.omastream")
+    root.opened = false
+    if (root.shell && typeof root.shell.hide === "function") {
+      root.shell.hide((root.manifest && root.manifest.id) || "user.omastream")
+    }
+  }
+
+  function toggle() {
+    if (root.opened) root.close()
+    else root.open("{}")
   }
 
   function loadMockData(query) {
@@ -43,152 +51,182 @@ Item {
     command: []
   }
 
-  Rectangle {
-    id: panel
-    anchors.centerIn: parent
-    width: Math.min(Style.space(800), parent.width - Style.space(40))
-    height: Math.min(Style.space(600), parent.height - Style.space(40))
-    radius: Style.space(12)
-    color: Color.menu.background
-    border.color: Color.menu.border
-    border.width: 1
+  PanelWindow {
+    id: panelWindow
+    visible: root.opened
+    anchors { top: true; bottom: true; left: true; right: true }
+    color: "transparent"
+    WlrLayershell.namespace: "omastream-overlay"
+    WlrLayershell.layer: WlrLayer.Overlay
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+    exclusionMode: ExclusionMode.Ignore
 
-    Column {
+    // Dimmed scrim overlay background
+    Rectangle {
       anchors.fill: parent
-      anchors.margins: Style.space(16)
-      spacing: Style.space(14)
+      color: Color.menu.scrim
+    }
 
-      // Header Bar
-      Row {
-        width: parent.width
+    // Dismiss when clicking outside the panel
+    MouseArea {
+      anchors.fill: parent
+      onClicked: root.close()
+    }
 
-        Text {
-          text: "omaStream"
-          font.pixelSize: 20
-          font.bold: true
-          color: Color.accent
-          anchors.verticalCenter: parent.verticalCenter
-        }
+    // Main Content Card
+    Rectangle {
+      id: panel
+      anchors.centerIn: parent
+      width: Math.min(Style.space(800), parent.width - Style.space(40))
+      height: Math.min(Style.space(600), parent.height - Style.space(40))
+      radius: Style.space(12)
+      color: Color.menu.background
+      border.color: Color.menu.border
+      border.width: 1
 
-        Item {
-          width: parent.width - 250
-          height: 1
-        }
+      // Prevent clicks inside panel from closing the overlay
+      MouseArea {
+        anchors.fill: parent
+        onClicked: {}
+      }
 
-        // Navigation Tabs
+      Column {
+        anchors.fill: parent
+        anchors.margins: Style.space(16)
+        spacing: Style.space(14)
+
+        // Header Bar
         Row {
-          spacing: Style.space(8)
-          anchors.verticalCenter: parent.verticalCenter
+          width: parent.width
 
-          Rectangle {
-            width: Style.space(80)
-            height: Style.space(30)
-            radius: Style.space(6)
-            color: root.activeTab === 0 ? Color.accent : Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.08)
-
-            Text {
-              anchors.centerIn: parent
-              text: "🔍 Search"
-              color: root.activeTab === 0 ? "#ffffff" : Color.menu.text
-              font.pixelSize: 12
-              font.bold: true
-            }
-
-            MouseArea {
-              anchors.fill: parent
-              cursorShape: Qt.PointingHandCursor
-              onClicked: root.activeTab = 0
-            }
+          Text {
+            text: "omaStream"
+            font.pixelSize: 20
+            font.bold: true
+            color: Color.accent
+            anchors.verticalCenter: parent.verticalCenter
           }
 
-          Rectangle {
-            width: Style.space(90)
-            height: Style.space(30)
-            radius: Style.space(6)
-            color: root.activeTab === 1 ? Color.accent : Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.08)
-
-            Text {
-              anchors.centerIn: parent
-              text: "⚙️ Settings"
-              color: root.activeTab === 1 ? "#ffffff" : Color.menu.text
-              font.pixelSize: 12
-              font.bold: true
-            }
-
-            MouseArea {
-              anchors.fill: parent
-              cursorShape: Qt.PointingHandCursor
-              onClicked: root.activeTab = 1
-            }
-          }
-        }
-      }
-
-      // Divider line
-      Rectangle {
-        width: parent.width
-        height: 1
-        color: Color.menu.border
-        opacity: 0.5
-      }
-
-      // TAB 0: YouTube Search & Mock Results View
-      Item {
-        width: parent.width
-        height: parent.height - Style.space(80)
-        visible: root.activeTab === 0
-
-        Column {
-          anchors.fill: parent
-          spacing: Style.space(12)
-
-          SearchBar {
-            width: parent.width
-            onSearchRequested: function(q) {
-              root.loadMockData(q)
-            }
+          Item {
+            width: parent.width - 270
+            height: 1
           }
 
-          ListView {
-            width: parent.width
-            height: parent.height - Style.space(60)
+          // Navigation Tabs
+          Row {
             spacing: Style.space(8)
-            clip: true
+            anchors.verticalCenter: parent.verticalCenter
 
-            model: root.videoList
+            Rectangle {
+              width: Style.space(80)
+              height: Style.space(30)
+              radius: Style.space(6)
+              color: root.activeTab === 0 ? Color.accent : Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.08)
 
-            delegate: VideoCard {
-              width: ListView.view.width
-              videoId: modelData.videoId
-              title: modelData.title
-              author: modelData.author
-              durationText: modelData.durationText
-              viewCountText: modelData.viewCountText
-              publishedText: modelData.publishedText
-              thumbnailUrl: modelData.thumbnailUrl
+              Text {
+                anchors.centerIn: parent
+                text: "🔍 Search"
+                color: root.activeTab === 0 ? "#ffffff" : Color.menu.text
+                font.pixelSize: 12
+                font.bold: true
+              }
 
-              onPlayRequested: function(vId) {
-                root.launchMpv(vId)
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.activeTab = 0
+              }
+            }
+
+            Rectangle {
+              width: Style.space(90)
+              height: Style.space(30)
+              radius: Style.space(6)
+              color: root.activeTab === 1 ? Color.accent : Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.08)
+
+              Text {
+                anchors.centerIn: parent
+                text: "⚙️ Settings"
+                color: root.activeTab === 1 ? "#ffffff" : Color.menu.text
+                font.pixelSize: 12
+                font.bold: true
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.activeTab = 1
               }
             }
           }
         }
-      }
 
-      // TAB 1: Invidious Instance Settings View
-      Item {
-        width: parent.width
-        height: parent.height - Style.space(80)
-        visible: root.activeTab === 1
-
-        InstanceSettings {
+        // Divider line
+        Rectangle {
           width: parent.width
-          activeInstanceUrl: root.activeInstanceUrl
-          onInstanceSelected: function(url) {
-            root.activeInstanceUrl = url
+          height: 1
+          color: Color.menu.border
+          opacity: 0.5
+        }
+
+        // TAB 0: YouTube Search & Mock Results View
+        Item {
+          width: parent.width
+          height: parent.height - Style.space(80)
+          visible: root.activeTab === 0
+
+          Column {
+            anchors.fill: parent
+            spacing: Style.space(12)
+
+            SearchBar {
+              width: parent.width
+              onSearchRequested: function(q) {
+                root.loadMockData(q)
+              }
+            }
+
+            ListView {
+              width: parent.width
+              height: parent.height - Style.space(60)
+              spacing: Style.space(8)
+              clip: true
+
+              model: root.videoList
+
+              delegate: VideoCard {
+                width: ListView.view.width
+                videoId: modelData.videoId
+                title: modelData.title
+                author: modelData.author
+                durationText: modelData.durationText
+                viewCountText: modelData.viewCountText
+                publishedText: modelData.publishedText
+                thumbnailUrl: modelData.thumbnailUrl
+
+                onPlayRequested: function(vId) {
+                  root.launchMpv(vId)
+                }
+              }
+            }
           }
-          onCustomInstanceAdded: function(url) {
-            root.activeInstanceUrl = url
+        }
+
+        // TAB 1: Invidious Instance Settings View
+        Item {
+          width: parent.width
+          height: parent.height - Style.space(80)
+          visible: root.activeTab === 1
+
+          InstanceSettings {
+            width: parent.width
+            activeInstanceUrl: root.activeInstanceUrl
+            onInstanceSelected: function(url) {
+              root.activeInstanceUrl = url
+            }
+            onCustomInstanceAdded: function(url) {
+              root.activeInstanceUrl = url
+            }
           }
         }
       }
