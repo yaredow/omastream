@@ -25,8 +25,10 @@ Rectangle {
 
     Text {
       anchors.verticalCenter: parent.verticalCenter
-      text: "🔍"
+      text: "\uf002" // NerdFont Search
+      font.family: Style.font.family
       font.pixelSize: 14
+      color: Color.menu.text
       opacity: input.activeFocus ? 1.0 : 0.6
     }
 
@@ -35,12 +37,14 @@ Rectangle {
       anchors.verticalCenter: parent.verticalCenter
       width: parent.width - Style.space(70)
       color: Color.menu.text
+      font.family: Style.font.family
       font.pixelSize: 13
       clip: true
 
       Text {
         text: "Search YouTube videos without tracking or ads..."
         color: Color.menu.text
+        font.family: Style.font.family
         opacity: 0.4
         font.pixelSize: 13
         visible: input.text.length === 0 && !input.activeFocus
@@ -56,7 +60,8 @@ Rectangle {
       id: clearBtn
       visible: input.text.length > 0
       anchors.verticalCenter: parent.verticalCenter
-      text: "✕"
+      text: "\uf00d" // NerdFont Times/Close
+      font.family: Style.font.family
       font.pixelSize: 13
       color: Color.menu.text
       opacity: 0.6

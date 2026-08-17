@@ -35,8 +35,10 @@ Column {
       spacing: 10
 
       Text {
-        text: "⚡"
+        text: "\uf233" // NerdFont Server
+        font.family: Style.font.family
         font.pixelSize: 16
+        color: Color.accent
         anchors.verticalCenter: parent.verticalCenter
       }
 
@@ -46,6 +48,7 @@ Column {
 
         Text {
           text: "Active Invidious Server"
+          font.family: Style.font.family
           font.bold: true
           font.pixelSize: 11
           color: Color.accent
@@ -53,6 +56,7 @@ Column {
 
         Text {
           text: root.activeInstanceUrl
+          font.family: Style.font.family
           font.pixelSize: 13
           font.bold: true
           color: Color.menu.text
@@ -63,6 +67,7 @@ Column {
 
   Text {
     text: "Public Server Swarm"
+    font.family: Style.font.family
     font.pixelSize: 14
     font.bold: true
     color: Color.menu.text
@@ -100,8 +105,9 @@ Column {
           spacing: 12
 
           Text {
-            text: modelData === root.activeInstanceUrl ? "●" : "○"
-            font.pixelSize: 14
+            text: modelData === root.activeInstanceUrl ? "\uf00c" : "\uf111" // NerdFont Check / Circle
+            font.family: Style.font.family
+            font.pixelSize: 12
             color: modelData === root.activeInstanceUrl ? Color.accent : Color.menu.text
             opacity: modelData === root.activeInstanceUrl ? 1.0 : 0.4
             anchors.verticalCenter: parent.verticalCenter
@@ -109,6 +115,7 @@ Column {
 
           Text {
             text: modelData
+            font.family: Style.font.family
             font.pixelSize: 13
             font.bold: modelData === root.activeInstanceUrl
             color: Color.menu.text
@@ -121,6 +128,7 @@ Column {
 
   Text {
     text: "Custom Server Endpoint"
+    font.family: Style.font.family
     font.pixelSize: 14
     font.bold: true
     color: Color.menu.text
@@ -131,7 +139,7 @@ Column {
     spacing: Style.space(10)
 
     Rectangle {
-      width: parent.width - Style.space(100)
+      width: parent.width - Style.space(110)
       height: Style.space(40)
       radius: Style.space(20)
       color: customInput.activeFocus ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.1) : Qt.rgba(Color.menu.background.r, Color.menu.background.g, Color.menu.background.b, 0.6)
@@ -144,12 +152,14 @@ Column {
         anchors.leftMargin: 14
         anchors.rightMargin: 14
         color: Color.menu.text
+        font.family: Style.font.family
         font.pixelSize: 12
         clip: true
 
         Text {
           text: "https://my-invidious.example.com"
           color: Color.menu.text
+          font.family: Style.font.family
           opacity: 0.4
           font.pixelSize: 12
           visible: customInput.text.length === 0 && !customInput.activeFocus
@@ -159,14 +169,15 @@ Column {
     }
 
     Rectangle {
-      width: Style.space(90)
+      width: Style.space(100)
       height: Style.space(40)
       radius: Style.space(20)
       color: Color.accent
 
       Text {
         anchors.centerIn: parent
-        text: "+ Add Server"
+        text: "\uf067 Add" // NerdFont Plus
+        font.family: Style.font.family
         color: "#ffffff"
         font.bold: true
         font.pixelSize: 11

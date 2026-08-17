@@ -54,7 +54,7 @@ Rectangle {
         asynchronous: true
       }
 
-      // Thumbnail subtle gradient overlay
+      // Thumbnail gradient overlay
       Rectangle {
         anchors.fill: parent
         gradient: Gradient {
@@ -78,6 +78,7 @@ Rectangle {
           anchors.centerIn: parent
           text: root.durationText
           color: "#ffffff"
+          font.family: Style.font.family
           font.pixelSize: 10
           font.bold: true
         }
@@ -94,6 +95,7 @@ Rectangle {
         width: parent.width
         text: root.title
         color: Color.menu.text
+        font.family: Style.font.family
         font.pixelSize: 13
         font.bold: true
         elide: Text.ElideRight
@@ -105,13 +107,16 @@ Rectangle {
       Row {
         spacing: 6
         Text {
-          text: "👤"
+          text: "\uf007" // NerdFont User
+          font.family: Style.font.family
           font.pixelSize: 10
-          opacity: 0.7
+          color: Color.accent
+          opacity: 0.8
         }
         Text {
           text: root.author
           color: Color.accent
+          font.family: Style.font.family
           font.pixelSize: 11
           font.bold: true
           elide: Text.ElideRight
@@ -121,14 +126,16 @@ Rectangle {
       Row {
         spacing: 8
         Text {
-          text: root.viewCountText
+          text: "\uf06e " + root.viewCountText // NerdFont Eye
           color: Color.menu.text
+          font.family: Style.font.family
           opacity: 0.55
           font.pixelSize: 10
         }
         Text {
           text: "•"
           color: Color.menu.text
+          font.family: Style.font.family
           opacity: 0.3
           font.pixelSize: 10
           visible: root.publishedText.length > 0
@@ -136,6 +143,7 @@ Rectangle {
         Text {
           text: root.publishedText
           color: Color.menu.text
+          font.family: Style.font.family
           opacity: 0.55
           font.pixelSize: 10
         }
@@ -156,7 +164,8 @@ Rectangle {
 
       Text {
         anchors.centerIn: parent
-        text: "▶"
+        text: "\uf04b" // NerdFont Play
+        font.family: Style.font.family
         font.pixelSize: 14
         color: playHover.containsMouse ? "#ffffff" : Color.accent
       }

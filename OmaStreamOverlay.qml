@@ -98,29 +98,40 @@ Item {
         Row {
           width: parent.width
 
-          // Brand title & badge
+          // Brand title & icon
           Row {
             spacing: 8
             anchors.verticalCenter: parent.verticalCenter
 
             Text {
-              text: "omaStream"
-              font.pixelSize: 22
-              font.bold: true
+              text: "\uf03d" // NerdFont Video Camera
+              font.family: Style.font.family
+              font.pixelSize: 20
               color: Color.accent
+            }
+
+            Text {
+              text: "omaStream"
+              font.family: Style.font.family
+              font.pixelSize: 20
+              font.bold: true
+              color: Color.menu.text
             }
 
             Rectangle {
               height: 18
-              width: 48
+              width: 52
               radius: 9
-              color: Color.accent
+              color: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.2)
+              border.color: Color.accent
+              border.width: 1
               anchors.verticalCenter: parent.verticalCenter
 
               Text {
                 anchors.centerIn: parent
                 text: "PREVIEW"
-                color: "#ffffff"
+                color: Color.accent
+                font.family: Style.font.family
                 font.pixelSize: 8
                 font.bold: true
               }
@@ -128,14 +139,14 @@ Item {
           }
 
           Item {
-            width: parent.width - 340
+            width: parent.width - 360
             height: 1
           }
 
           // Segmented Tab Controls
           Rectangle {
             height: Style.space(36)
-            width: Style.space(190)
+            width: Style.space(200)
             radius: Style.space(18)
             color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.08)
             anchors.verticalCenter: parent.verticalCenter
@@ -152,7 +163,8 @@ Item {
 
                 Text {
                   anchors.centerIn: parent
-                  text: "🔍 Search"
+                  text: "\uf002 Search" // NerdFont Search
+                  font.family: Style.font.family
                   color: root.activeTab === 0 ? "#ffffff" : Color.menu.text
                   font.pixelSize: 12
                   font.bold: true
@@ -173,7 +185,8 @@ Item {
 
                 Text {
                   anchors.centerIn: parent
-                  text: "⚙️ Server"
+                  text: "\uf013 Server" // NerdFont Cog
+                  font.family: Style.font.family
                   color: root.activeTab === 1 ? "#ffffff" : Color.menu.text
                   font.pixelSize: 12
                   font.bold: true
