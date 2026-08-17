@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# omaStream Video Downloader helper using yt-dlp
+# Usage: omastream-download <videoId>
+
+VIDEO_ID="$1"
+DOWNLOAD_DIR="${HOME}/Downloads"
+
+if [ -z "$VIDEO_ID" ]; then
+    echo "Usage: omastream-download <videoId>" >&2
+    exit 1
+fi
+
+mkdir -p "$DOWNLOAD_DIR"
+URL="https://www.youtube.com/watch?v=${VIDEO_ID}"
+
+# Send desktop notification that download started
+notify-send "omaStream" "Downloading video to ~/Downloads..." -i video-x-generic 2>/dev/null || true
+
+# Run yt-dlp in background
+nohup yt-dlp -P "$DOWNLOAD_DIR" -o "%(title)s.%(ext)s" --no-playlist "$URL" >/dev/null 2>&1 && \
+notify-send "omaStream" "Download completed! Saved to ~/Downloads" -i video-x-generic 2>/dev/null &

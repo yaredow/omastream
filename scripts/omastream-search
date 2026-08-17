@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# omaStream search provider using yt-dlp.
+# Output is a JSON array of flat YouTube entries for the QML media model.
+
+QUERY="${1:-}"
+
+if [ -z "$QUERY" ]; then
+    printf '[]\n'
+    exit 0
+fi
+
+yt-dlp \
+    --flat-playlist \
+    --dump-json \
+    --skip-download \
+    --no-warnings \
+    "ytsearch12:${QUERY}" 2>/dev/null | jq -s '.' || printf '[]\n'

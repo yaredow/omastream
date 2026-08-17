@@ -5,19 +5,21 @@
   "version": "0.1.0",
   "author": "yada",
   "license": "MIT",
-  "description": "Quickshell video & audio downloader overlay powered by yt-dlp",
-  "homepage": "https://github.com/robzolkos/omarchy-skill",
+  "description": "Quickshell video & audio search and player plugin for Omarchy",
   "kinds": [
-    "bar-widget",
-    "overlay"
+    "service",
+    "overlay",
+    "bar-widget"
   ],
+  "keepLoaded": true,
   "entryPoints": {
-    "barWidget": "BarWidget.qml",
-    "overlay": "OmaStreamOverlay.qml"
+    "service": "PlaybackService.qml",
+    "overlay": "OmaStreamOverlay.qml",
+    "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "omaStream",
-    "description": "Open video downloader overlay",
+    "description": "Open omaStream video search & player",
     "category": "Media",
     "allowMultiple": false,
     "defaultSection": "right"
