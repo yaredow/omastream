@@ -37,6 +37,8 @@ Item {
   property real playbackRate: 1.0
   property string playerError: ""
   property string resolveError: ""
+  property int playbackRetries: 0
+  readonly property int maximumPlaybackRetries: 2
 
   property int requestSerial: 0
   property int activeRequestSerial: 0
@@ -56,6 +58,7 @@ Item {
     root.mode = root.pendingRequest.mode
     root.playerError = ""
     root.resolveError = ""
+    root.playbackRetries = 0
     player.source = ""
     player.stop()
 
@@ -80,7 +83,9 @@ Item {
       resolveProcess.command = [
         "yt-dlp",
         "--no-warnings",
-        "--extractor-args", "youtube:player_client=android,web",
+        "--extractor-args", root.playbackRetries > 0
+          ? "youtube:player_client=mweb,android"
+          : "youtube:player_client=android,mweb",
         "-g",
         "-f", format,
         "https://www.youtube.com/watch?v=" + request.item.id
@@ -104,6 +109,26 @@ Item {
     }
     player.source = url
     player.play()
+  }
+
+  function retryPlayback() {
+    if (!root.currentItem || root.currentItem.sourceType !== "youtube"
+        || root.playbackRetries >= root.maximumPlaybackRetries) return
+
+    root.playbackRetries += 1
+    root.requestSerial += 1
+    root.pendingRequest = {
+      serial: root.requestSerial,
+      item: root.currentItem,
+      mode: root.mode
+    }
+    root.playerError = ""
+    root.resolveError = ""
+    player.stop()
+    player.source = ""
+
+    if (resolveProcess.running) resolveProcess.running = false
+    else root.startPendingResolution()
   }
 
   function togglePlayback() {
@@ -144,6 +169,13 @@ Item {
     root.playbackRate = Math.max(0.25, Math.min(2.0, Number(value) || 1.0))
   }
 
+  Timer {
+    id: playbackRetryTimer
+    interval: 650
+    repeat: false
+    onTriggered: root.retryPlayback()
+  }
+
   MediaPlayer {
     id: player
     videoOutput: root.videoOutput
@@ -154,6 +186,9 @@ Item {
     }
     onErrorOccurred: function(error, errorString) {
       root.playerError = errorString || "Media playback failed."
+      if (root.currentItem && root.currentItem.sourceType === "youtube"
+          && root.playbackRetries < root.maximumPlaybackRetries)
+        playbackRetryTimer.restart()
     }
   }
 

@@ -6,7 +6,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
-import "components"
+
 import "services/MediaModel.js" as MediaModel
 
 Item {
@@ -37,7 +37,12 @@ Item {
   readonly property int playerDuration: service ? service.duration : 0
   readonly property bool playerSeekable: service ? service.seekable : false
   readonly property bool playerMuted: service ? service.muted : false
-  readonly property bool inlineVideoActive: (playerRunning || playerResolving)
+  readonly property bool playerBuffering: service ? service.buffering : false
+  readonly property string playerError: service ? service.errorMessage || "" : ""
+  readonly property bool selectedIsPlaying: playerRunning
+    && selectedVideo
+    && playingVideoId === selectedVideo.videoId
+  readonly property bool inlineVideoActive: (playerRunning || playerResolving || playerError)
     && playerMode === "video"
     && selectedVideo
     && playingVideoId === selectedVideo.videoId
@@ -55,7 +60,14 @@ Item {
     id: fullscreenControlsTimer
     interval: 3000
     repeat: false
-    onTriggered: if (root.fullscreen) root.controlsVisible = false
+    onTriggered: if (root.fullscreen && !root.playerPaused) root.controlsVisible = false
+  }
+
+  onPlayerPausedChanged: {
+    if (!root.fullscreen) return
+    root.controlsVisible = true
+    if (root.playerPaused) fullscreenControlsTimer.stop()
+    else fullscreenControlsTimer.restart()
   }
 
   function open(payloadJson) {
@@ -317,10 +329,20 @@ Item {
         }
 
         MouseArea {
+          id: fullscreenMouseArea
           anchors.fill: parent
+          hoverEnabled: true
+          onEntered: {
+            root.controlsVisible = true
+            if (!root.playerPaused) fullscreenControlsTimer.restart()
+          }
+          onPositionChanged: {
+            root.controlsVisible = true
+            if (!root.playerPaused) fullscreenControlsTimer.restart()
+          }
           onClicked: {
             root.controlsVisible = true
-            fullscreenControlsTimer.restart()
+            if (!root.playerPaused) fullscreenControlsTimer.restart()
           }
         }
 
@@ -357,6 +379,7 @@ Item {
               spacing: Style.spacing.sm
 
               Button {
+                id: fsPlayBtn
                 iconText: root.playerRunning && !root.playerPaused ? "\uf04c" : "\uf04b"
                 tooltipText: root.playerPaused ? "Play" : "Pause"
                 foreground: "#ffffff"
@@ -365,6 +388,7 @@ Item {
               }
 
               Text {
+                id: fsTimeText
                 text: root.formatTime(root.playerPosition) + " / " + root.formatTime(root.playerDuration)
                 color: "#ffffff"
                 font.family: Style.font.menuFamily
@@ -372,9 +396,35 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
               }
 
-              Item { width: parent.width - parent.children[0].width - parent.children[1].width - Style.spacing.sm; height: 1 }
+              Item {
+                width: Math.max(0, parent.width - fsPlayBtn.width - fsTimeText.width - fsMuteBtn.width - Style.space(72) - fsExitBtn.width - Style.spacing.sm * 5)
+                height: 1
+              }
 
               Button {
+                id: fsMuteBtn
+                focusable: true
+                iconText: root.playerMuted || root.playerVolume === 0 ? "\uf026" : (root.playerVolume < 0.5 ? "\uf027" : "\uf028")
+                tooltipText: root.playerMuted ? "Unmute (M)" : "Mute (M)"
+                foreground: "#ffffff"
+                accent: Color.accent
+                onClicked: if (root.service) root.service.toggleMute()
+              }
+
+              PanelSlider {
+                width: Style.space(72)
+                anchors.verticalCenter: parent.verticalCenter
+                minimum: 0
+                maximum: 1
+                value: root.playerVolume
+                trackColor: "#666666"
+                fillColor: Color.accent
+                knobColor: "#ffffff"
+                onMoved: function(value) { if (root.service) root.service.setVolume(value) }
+              }
+
+              Button {
+                id: fsExitBtn
                 iconText: "\uf066"
                 tooltipText: "Exit fullscreen"
                 foreground: "#ffffff"
@@ -492,43 +542,7 @@ Item {
           anchors.bottomMargin: Style.spacing.xs
           spacing: Style.spacing.xs
 
-          Row {
-            width: parent.width
-            height: Style.space(24)
-            spacing: Style.spacing.sm
 
-            Text {
-              text: root.formatTime(root.playerPosition)
-              color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.65)
-              font.family: Style.font.menuFamily
-              font.pixelSize: Style.font.caption
-              width: Style.space(42)
-              anchors.verticalCenter: parent.verticalCenter
-            }
-
-            PanelSlider {
-              width: parent.width - Style.space(92)
-              minimum: 0
-              maximum: Math.max(1, root.playerDuration)
-              step: 1000
-              value: root.playerPosition
-              enabled: root.playerSeekable
-              trackColor: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.12)
-              fillColor: Color.accent
-              knobColor: Color.menu.text
-              onMoved: function(value) { if (root.service) root.service.seek(value) }
-            }
-
-            Text {
-              text: root.formatTime(root.playerDuration)
-              color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.65)
-              font.family: Style.font.menuFamily
-              font.pixelSize: Style.font.caption
-              width: Style.space(42)
-              horizontalAlignment: Text.AlignRight
-              anchors.verticalCenter: parent.verticalCenter
-            }
-          }
 
           Row {
             width: parent.width
@@ -537,7 +551,7 @@ Item {
 
           // Left Section: Now Playing Metadata (Fixed width so it never overlaps controls)
           Row {
-            width: parent.width - transportControls.width - volumeControls.width - (Style.spacing.md * 2) - 10
+            width: parent.width - transportControls.width - Style.spacing.md - 10
             height: parent.height
             spacing: Style.spacing.sm
             anchors.verticalCenter: parent.verticalCenter
@@ -587,8 +601,8 @@ Item {
 
               Text {
                 width: parent.width
-                text: root.playerResolving ? "Resolving stream..." : (root.playerRunning ? (root.playerPaused ? "Paused" : "Live Streaming · " + root.playingAuthor) : "Choose a stream to begin playback")
-                color: root.playerResolving ? Color.accent : (root.playerRunning ? (root.playerPaused ? Color.urgent : Color.accent) : Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.45))
+                text: root.playerRunning || root.playerResolving ? (root.playerPaused && !root.playerResolving ? "Paused" : "Playing · " + root.playingAuthor) : "Choose a stream to begin playback"
+                color: root.playerResolving || root.playerRunning ? (root.playerPaused && !root.playerResolving ? Color.urgent : Color.accent) : Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.45)
                 font.family: Style.font.menuFamily
                 font.pixelSize: Style.font.caption
                 elide: Text.ElideRight
@@ -621,47 +635,7 @@ Item {
             }
           }
 
-          // Right Section: Volume Slider
-          Row {
-            id: volumeControls
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.spacing.xs
 
-            Button {
-              anchors.verticalCenter: parent.verticalCenter
-              iconText: root.playerMuted || root.playerVolume === 0 ? "\uf026" : "\uf028"
-              tooltipText: root.playerMuted ? "Unmute" : "Mute"
-              enabled: root.playerRunning
-              foreground: Color.menu.text
-              accent: Color.accent
-              onClicked: if (root.service) root.service.toggleMute()
-            }
-
-            PanelSlider {
-              width: Style.space(110)
-              anchors.verticalCenter: parent.verticalCenter
-              minimum: 0
-              maximum: 100
-              step: 1
-              integer: true
-              value: root.playerVolume
-              trackColor: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.12)
-              fillColor: Color.accent
-              knobColor: Color.menu.text
-              onMoved: function(nextValue) {
-                root.runPlayer("volume", String(nextValue), "", "", "", "")
-              }
-            }
-            Button {
-              anchors.verticalCenter: parent.verticalCenter
-              iconText: "\uf065"
-              tooltipText: "Fullscreen (F)"
-              enabled: root.playerRunning && root.playerMode === "video"
-              foreground: Color.menu.text
-              accent: Color.accent
-              onClicked: root.setFullscreen(true)
-            }
-          }
         }
       }
       }
@@ -769,7 +743,10 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.selectVideo(index)
+                    onClicked: {
+                      root.selectVideo(index)
+                      root.playSelectedVideo()
+                    }
                   }
 
                   Row {
@@ -873,7 +850,7 @@ Item {
                   Rectangle {
                     id: inlinePlayer
                     width: parent.width
-                    height: Math.floor(width * 9 / 18)
+                    height: Math.floor(width * 9 / 16)
                     radius: Style.cornerRadius
                     color: "#121212"
                     clip: true
@@ -917,8 +894,29 @@ Item {
                     }
 
                     Rectangle {
+                      anchors.centerIn: parent
+                      width: Math.min(parent.width - Style.spacing.lg * 2, playerStatusText.implicitWidth + Style.spacing.lg)
+                      height: playerStatusText.implicitHeight + Style.spacing.md
+                      radius: Style.cornerRadius
+                      color: "#d9000000"
+                      visible: root.playerError.length > 0 && root.inlineVideoActive
+
+                      Text {
+                        id: playerStatusText
+                        anchors.centerIn: parent
+                        width: Math.min(implicitWidth, inlinePlayer.width - Style.spacing.lg * 3)
+                        text: root.playerError
+                        color: "#ffffff"
+                        font.family: Style.font.menuFamily
+                        font.pixelSize: Style.font.caption
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.Wrap
+                      }
+                    }
+
+                    Rectangle {
                       anchors.fill: parent
-                      color: "#33000000"
+                      color: "#40000000"
                       opacity: inlinePlayerHover.hovered || root.playerPaused ? 1 : 0
                       visible: opacity > 0
 
@@ -928,17 +926,18 @@ Item {
                     // Central action mirrors conventional video players.
                     Button {
                       anchors.centerIn: parent
-                      visible: !root.inlineVideoActive || root.playerPaused || inlinePlayerHover.hovered
+                      visible: (!root.inlineVideoActive || root.playerPaused || root.playerResolving || root.playerBuffering || inlinePlayerHover.hovered)
+                        && root.playerError.length === 0
                       focusable: true
-                      iconText: root.playerResolving ? "\uf110"
+                      iconText: root.playerResolving || root.playerBuffering ? "\uf110"
                         : (root.inlineVideoActive && !root.playerPaused ? "\uf04c" : "\uf04b")
-                      iconSpinning: root.playerResolving
-                      tooltipText: root.playerResolving ? "Loading video"
+                      iconSpinning: root.playerResolving || root.playerBuffering
+                      tooltipText: root.playerResolving || root.playerBuffering ? "Loading video"
                         : (root.inlineVideoActive && !root.playerPaused ? "Pause (Space)" : "Play (Space)")
                       foreground: "#ffffff"
                       accent: Color.accent
                       iconSize: Style.font.heading * 1.5
-                      enabled: !root.playerResolving
+                      enabled: !root.playerResolving && !root.playerBuffering
                       onClicked: root.toggleInlinePlayback()
                     }
 
@@ -1002,18 +1001,30 @@ Item {
                           Item {
                             width: Math.max(0, parent.width - inlinePlayButton.width
                               - inlineTimeLabel.width - inlineMuteButton.width
-                              - inlineFullscreenButton.width - Style.spacing.xs * 4)
+                              - Style.space(72) - inlineFullscreenButton.width - Style.spacing.xs * 5)
                             height: 1
                           }
 
                           Button {
                             id: inlineMuteButton
                             focusable: true
-                            iconText: root.playerMuted || root.playerVolume === 0 ? "\uf026" : "\uf028"
+                            iconText: root.playerMuted || root.playerVolume === 0 ? "\uf026" : (root.playerVolume < 0.5 ? "\uf027" : "\uf028")
                             tooltipText: root.playerMuted ? "Unmute (M)" : "Mute (M)"
                             foreground: "#ffffff"
                             accent: Color.accent
                             onClicked: if (root.service) root.service.toggleMute()
+                          }
+
+                          PanelSlider {
+                            width: Style.space(72)
+                            anchors.verticalCenter: parent.verticalCenter
+                            minimum: 0
+                            maximum: 1
+                            value: root.playerVolume
+                            trackColor: "#666666"
+                            fillColor: Color.accent
+                            knobColor: "#ffffff"
+                            onMoved: function(value) { if (root.service) root.service.setVolume(value) }
                           }
 
                           Button {
@@ -1043,75 +1054,75 @@ Item {
                     wrapMode: Text.Wrap
                   }
 
-                  // Channel & Metrics Info Bar
-                  Row {
+                  // Channel & Metrics Info Bar with Download Button
+                  Item {
                     width: parent.width
-                    spacing: Style.spacing.md
+                    height: Style.space(40)
 
-                    Text {
-                      text: "\uf007 " + (root.selectedVideo ? root.selectedVideo.author : "")
-                      color: Color.accent
-                      font.family: Style.font.menuFamily
-                      font.pixelSize: Style.font.bodySmall
-                      font.bold: true
-                    }
+                    Row {
+                      id: infoRow
+                      anchors.left: parent.left
+                      anchors.verticalCenter: parent.verticalCenter
+                      spacing: Style.spacing.md
 
-                    Text {
-                      text: "\uf06e " + (root.selectedVideo ? root.selectedVideo.viewCountText : "")
-                      color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.65)
-                      font.family: Style.font.menuFamily
-                      font.pixelSize: Style.font.bodySmall
-                    }
+                      Text {
+                        text: "\uf007 " + (root.selectedVideo ? root.selectedVideo.author : "")
+                        color: Color.accent
+                        font.family: Style.font.menuFamily
+                        font.pixelSize: Style.font.bodySmall
+                        font.bold: true
+                      }
 
-                    Text {
-                      text: "\uf073 " + (root.selectedVideo ? root.selectedVideo.publishedText : "")
-                      color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.65)
-                      font.family: Style.font.menuFamily
-                      font.pixelSize: Style.font.bodySmall
-                      visible: root.selectedVideo && root.selectedVideo.publishedText !== ""
-                    }
-                  }
+                      Text {
+                        text: "\uf06e " + (root.selectedVideo ? root.selectedVideo.viewCountText : "")
+                        color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.65)
+                        font.family: Style.font.menuFamily
+                        font.pixelSize: Style.font.bodySmall
+                      }
 
-                  // Official Action Buttons Row (qs.Ui Button Components)
-                  Row {
-                    spacing: Style.spacing.sm
-
-                    Button {
-                      iconText: "\uf001" // Music
-                      text: "Stream Audio"
-                      tooltipText: "Play audio in background dock"
-                      bordered: true
-                      foreground: Color.menu.text
-                      accent: Color.accent
-                      onClicked: {
-                        if (root.selectedVideo) {
-                          root.runPlayer("play", root.selectedVideo.videoId, "audio", root.selectedVideo.title, root.selectedVideo.author, root.selectedVideo.thumbnailUrl)
-                        }
+                      Text {
+                        text: "\uf073 " + (root.selectedVideo ? root.selectedVideo.publishedText : "")
+                        color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.65)
+                        font.family: Style.font.menuFamily
+                        font.pixelSize: Style.font.bodySmall
+                        visible: root.selectedVideo && root.selectedVideo.publishedText !== ""
                       }
                     }
 
                     Button {
-                      iconText: "\uf03d" // Camera
-                      text: "Watch Video"
-                      tooltipText: "Play video in the embedded player"
-                      bordered: true
-                      foreground: Color.menu.text
-                      accent: Color.accent
-                      onClicked: {
-                        if (root.selectedVideo) {
-                          root.runPlayer("play", root.selectedVideo.videoId, "video", root.selectedVideo.title, root.selectedVideo.author, root.selectedVideo.thumbnailUrl)
-                        }
-                      }
-                    }
-
-                    Button {
-                      iconText: "\uf019" // Download
+                      id: downloadBtn
+                      anchors.right: parent.right
+                      anchors.verticalCenter: parent.verticalCenter
+                      iconText: "\uf019"
                       text: "Download"
-                      tooltipText: "Save to ~/Downloads"
-                      bordered: true
+                      tooltipText: "Download video and audio to ~/Downloads"
+                      focusable: true
                       foreground: Color.menu.text
                       accent: Color.accent
                       onClicked: root.downloadCurrentVideo()
+                    }
+                  }
+
+                  // Video Description Box
+                  Rectangle {
+                    width: parent.width
+                    height: descText.implicitHeight + Style.spacing.md * 2
+                    radius: Style.cornerRadius
+                    color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.05)
+                    visible: root.selectedVideo && root.selectedVideo.description && root.selectedVideo.description.length > 0
+
+                    Text {
+                      id: descText
+                      anchors.fill: parent
+                      anchors.margins: Style.spacing.md
+                      text: root.selectedVideo ? root.selectedVideo.description : ""
+                      color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.85)
+                      font.family: Style.font.menuFamily
+                      font.pixelSize: Style.font.bodySmall
+                      wrapMode: Text.Wrap
+                      elide: Text.ElideRight
+                      maximumLineCount: 4
+                      lineHeight: 1.3
                     }
                   }
                 }

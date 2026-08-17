@@ -39,6 +39,7 @@ function parseSearchResults(data) {
             viewCount: item.view_count || 0,
             viewCountText: formatViews(item.view_count),
             publishedText: "",
+            description: item.description || "No description available.",
             artworkUrl: "https://i.ytimg.com/vi/" + item.id + "/mqdefault.jpg",
             thumbnailUrl: "https://i.ytimg.com/vi/" + item.id + "/mqdefault.jpg",
             liveNow: item.is_live === true,
