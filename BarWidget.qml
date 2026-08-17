@@ -8,6 +8,21 @@ BarWidget {
 
   moduleName: "user.omastream"
 
+  property bool opened: false
+
+  function open(payloadJson) {
+    root.opened = true
+  }
+
+  function close() {
+    root.opened = false
+  }
+
+  function toggle() {
+    if (root.opened) root.close()
+    else root.open("{}")
+  }
+
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -15,7 +30,7 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "\uf03d" // Video camera / stream icon
+    text: "\uf03d"
     tooltipText: "omaStream YouTube Search & Player"
 
     onPressed: function(mouseButton) {
