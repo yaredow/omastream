@@ -61,30 +61,29 @@ Item {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
 
-    // Dimmed scrim overlay background
+    // Dimmed scrim background
     Rectangle {
       anchors.fill: parent
       color: Color.menu.scrim
     }
 
-    // Dismiss when clicking outside the panel
+    // Dismiss when clicking outside panel
     MouseArea {
       anchors.fill: parent
       onClicked: root.close()
     }
 
-    // Main Content Card
+    // Main Card Frame
     Rectangle {
       id: panel
       anchors.centerIn: parent
-      width: Math.min(Style.space(800), parent.width - Style.space(40))
-      height: Math.min(Style.space(600), parent.height - Style.space(40))
-      radius: Style.space(12)
+      width: Math.min(Style.space(840), parent.width - Style.space(40))
+      height: Math.min(Style.space(640), parent.height - Style.space(40))
+      radius: Style.space(16)
       color: Color.menu.background
-      border.color: Color.menu.border
+      border.color: Qt.rgba(Color.menu.border.r, Color.menu.border.g, Color.menu.border.b, 0.4)
       border.width: 1
 
-      // Prevent clicks inside panel from closing the overlay
       MouseArea {
         anchors.fill: parent
         onClicked: {}
@@ -92,92 +91,120 @@ Item {
 
       Column {
         anchors.fill: parent
-        anchors.margins: Style.space(16)
-        spacing: Style.space(14)
+        anchors.margins: Style.space(20)
+        spacing: Style.space(16)
 
-        // Header Bar
+        // Header Navigation Bar
         Row {
           width: parent.width
 
-          Text {
-            text: "omaStream"
-            font.pixelSize: 20
-            font.bold: true
-            color: Color.accent
-            anchors.verticalCenter: parent.verticalCenter
-          }
-
-          Item {
-            width: parent.width - 270
-            height: 1
-          }
-
-          // Navigation Tabs
+          // Brand title & badge
           Row {
-            spacing: Style.space(8)
+            spacing: 8
             anchors.verticalCenter: parent.verticalCenter
 
-            Rectangle {
-              width: Style.space(80)
-              height: Style.space(30)
-              radius: Style.space(6)
-              color: root.activeTab === 0 ? Color.accent : Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.08)
-
-              Text {
-                anchors.centerIn: parent
-                text: "🔍 Search"
-                color: root.activeTab === 0 ? "#ffffff" : Color.menu.text
-                font.pixelSize: 12
-                font.bold: true
-              }
-
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.activeTab = 0
-              }
+            Text {
+              text: "omaStream"
+              font.pixelSize: 22
+              font.bold: true
+              color: Color.accent
             }
 
             Rectangle {
-              width: Style.space(90)
-              height: Style.space(30)
-              radius: Style.space(6)
-              color: root.activeTab === 1 ? Color.accent : Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.08)
+              height: 18
+              width: 48
+              radius: 9
+              color: Color.accent
+              anchors.verticalCenter: parent.verticalCenter
 
               Text {
                 anchors.centerIn: parent
-                text: "⚙️ Settings"
-                color: root.activeTab === 1 ? "#ffffff" : Color.menu.text
-                font.pixelSize: 12
+                text: "PREVIEW"
+                color: "#ffffff"
+                font.pixelSize: 8
                 font.bold: true
               }
+            }
+          }
 
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.activeTab = 1
+          Item {
+            width: parent.width - 340
+            height: 1
+          }
+
+          // Segmented Tab Controls
+          Rectangle {
+            height: Style.space(36)
+            width: Style.space(190)
+            radius: Style.space(18)
+            color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.08)
+            anchors.verticalCenter: parent.verticalCenter
+
+            Row {
+              anchors.fill: parent
+              anchors.margins: 3
+
+              Rectangle {
+                width: (parent.width) / 2
+                height: parent.height
+                radius: Style.space(15)
+                color: root.activeTab === 0 ? Color.accent : "transparent"
+
+                Text {
+                  anchors.centerIn: parent
+                  text: "🔍 Search"
+                  color: root.activeTab === 0 ? "#ffffff" : Color.menu.text
+                  font.pixelSize: 12
+                  font.bold: true
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.activeTab = 0
+                }
+              }
+
+              Rectangle {
+                width: (parent.width) / 2
+                height: parent.height
+                radius: Style.space(15)
+                color: root.activeTab === 1 ? Color.accent : "transparent"
+
+                Text {
+                  anchors.centerIn: parent
+                  text: "⚙️ Server"
+                  color: root.activeTab === 1 ? "#ffffff" : Color.menu.text
+                  font.pixelSize: 12
+                  font.bold: true
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.activeTab = 1
+                }
               }
             }
           }
         }
 
-        // Divider line
+        // Subtly styled divider line
         Rectangle {
           width: parent.width
           height: 1
-          color: Color.menu.border
-          opacity: 0.5
+          color: Qt.rgba(Color.menu.border.r, Color.menu.border.g, Color.menu.border.b, 0.25)
         }
 
         // TAB 0: YouTube Search & Mock Results View
         Item {
           width: parent.width
-          height: parent.height - Style.space(80)
+          height: parent.height - Style.space(90)
           visible: root.activeTab === 0
 
           Column {
             anchors.fill: parent
-            spacing: Style.space(12)
+            spacing: Style.space(14)
 
             SearchBar {
               width: parent.width
@@ -188,8 +215,8 @@ Item {
 
             ListView {
               width: parent.width
-              height: parent.height - Style.space(60)
-              spacing: Style.space(8)
+              height: parent.height - Style.space(64)
+              spacing: Style.space(10)
               clip: true
 
               model: root.videoList
@@ -215,7 +242,7 @@ Item {
         // TAB 1: Invidious Instance Settings View
         Item {
           width: parent.width
-          height: parent.height - Style.space(80)
+          height: parent.height - Style.space(90)
           visible: root.activeTab === 1
 
           InstanceSettings {
