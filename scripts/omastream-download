@@ -1,21 +1,187 @@
-#!/usr/bin/env bash
-# omaStream Video Downloader helper using yt-dlp
-# Usage: omastream-download <videoId>
+#!/usr/bin/env python3
+"""
+omaStream structured downloader helper.
+Spawns yt-dlp with --newline and progress-template, translating stdout to NDJSON events.
+Handles process-group signals (SIGINT, SIGTERM) to cleanly terminate child processes.
+"""
 
-VIDEO_ID="$1"
-DOWNLOAD_DIR="${HOME}/Downloads"
+import sys
+import os
+import json
+import signal
+import argparse
+import subprocess
+import threading
+import re
 
-if [ -z "$VIDEO_ID" ]; then
-    echo "Usage: omastream-download <videoId>" >&2
-    exit 1
-fi
+def emit(event_type, **kwargs):
+    payload = {"type": event_type, **kwargs}
+    sys.stdout.write(json.dumps(payload) + "\n")
+    sys.stdout.flush()
 
-mkdir -p "$DOWNLOAD_DIR"
-URL="https://www.youtube.com/watch?v=${VIDEO_ID}"
+def main():
+    parser = argparse.ArgumentParser(description="omaStream Download Helper")
+    parser.add_argument("--job-id", default="job_default", help="Unique job ID")
+    parser.add_argument("--url", required=True, help="Media URL or video ID")
+    parser.add_argument("--dest", default=os.path.expanduser("~/Downloads"), help="Destination directory")
+    parser.add_argument("--format-mode", default="video_audio", choices=["video_audio", "video_only", "audio_only"], help="Format mode")
+    parser.add_argument("--format-id", default="best", help="yt-dlp format ID or specification")
+    parser.add_argument("--container", default="mp4", help="Target container (mp4, mkv, webm, mp3, m4a)")
+    args = parser.parse_args()
 
-# Send desktop notification that download started
-notify-send "omaStream" "Downloading video to ~/Downloads..." -i video-x-generic 2>/dev/null || true
+    job_id = args.job_id
+    url = args.url
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = f"https://www.youtube.com/watch?v={url}"
 
-# Run yt-dlp in background
-nohup yt-dlp -P "$DOWNLOAD_DIR" -o "%(title)s.%(ext)s" --no-playlist "$URL" >/dev/null 2>&1 && \
-notify-send "omaStream" "Download completed! Saved to ~/Downloads" -i video-x-generic 2>/dev/null &
+    dest_dir = os.path.expanduser(args.dest)
+    os.makedirs(dest_dir, exist_ok=True)
+
+    # Build yt-dlp command
+    cmd = [
+        "yt-dlp",
+        "--newline",
+        "--continue",
+        "--no-playlist",
+        "-P", dest_dir,
+        "-o", "%(title)s.%(ext)s",
+        "--progress-template", "OMAPROGRESS:%(progress._percent_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(progress.status)s",
+    ]
+
+    if args.format_mode == "audio_only":
+        audio_format = args.format_id if args.format_id not in ("best", "auto") else "bestaudio/best"
+        cmd.extend(["-x", "--audio-format", args.container, "-f", audio_format])
+    elif args.format_id and args.format_id != "best" and args.format_id != "auto":
+        if args.format_mode == "video_only":
+            cmd.extend(["-f", args.format_id])
+        else:
+            # Try specified video format + best audio, fallback to format_id directly
+            cmd.extend(["-f", f"{args.format_id}+bestaudio/best", "--merge-output-format", args.container])
+    else:
+        # Default best video + best audio merged
+        cmd.extend(["-f", "bestvideo+bestaudio/best", "--merge-output-format", args.container])
+
+    cmd.append(url)
+
+    emit("started", jobId=job_id, url=url, destination=dest_dir)
+
+    proc = None
+
+    cancelled = False
+
+    def terminate_process_group():
+        if not proc or proc.poll() is not None:
+            return
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        except ProcessLookupError:
+            pass
+
+    def handle_signal(sig, frame):
+        nonlocal cancelled
+        cancelled = True
+        terminate_process_group()
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            preexec_fn=os.setsid  # start new process group
+        )
+    except Exception as e:
+        emit("failed", jobId=job_id, error=str(e))
+        sys.exit(1)
+
+    completed_path = ""
+    last_percent = 0.0
+    stderr_lines = []
+
+    def drain_stderr():
+        for error_line in proc.stderr:
+            stderr_lines.append(error_line)
+            if len(stderr_lines) > 100:
+                del stderr_lines[0]
+
+    stderr_thread = threading.Thread(target=drain_stderr, daemon=True)
+    stderr_thread.start()
+
+    # Pattern to capture downloaded destination
+    dest_pattern = re.compile(r'\[(?:download|Merger|ExtractAudio)\] Destination: (.+)')
+    dest_pattern2 = re.compile(r'\[(?:download|Merger)\] (.+) has already been downloaded')
+
+    while True:
+        line = proc.stdout.readline()
+        if not line and proc.poll() is not None:
+            break
+        line = line.strip()
+        if not line:
+            continue
+
+        if line.startswith("OMAPROGRESS:"):
+            parts = line[len("OMAPROGRESS:"):].split("|")
+            if len(parts) >= 7:
+                percent_str, down_bytes, tot_bytes, est_bytes, speed, eta, status = parts[:7]
+
+                # Parse percent
+                cleaned_percent = percent_str.replace("%", "").strip()
+                try:
+                    percent_val = float(cleaned_percent)
+                except ValueError:
+                    percent_val = last_percent
+                last_percent = percent_val
+
+                def safe_int(v):
+                    try:
+                        return int(float(v))
+                    except (ValueError, TypeError):
+                        return 0
+
+                downloaded = safe_int(down_bytes)
+                total = safe_int(tot_bytes) or safe_int(est_bytes)
+                speed_val = safe_int(speed)
+                eta_val = safe_int(eta)
+
+                emit("progress",
+                     jobId=job_id,
+                     percent=round(percent_val, 1),
+                     downloadedBytes=downloaded,
+                     totalBytes=total,
+                     speed=speed_val,
+                     eta=eta_val)
+        else:
+            m = dest_pattern.search(line) or dest_pattern2.search(line)
+            if m:
+                completed_path = m.group(1).strip()
+            elif "[Merger]" in line:
+                emit("status", jobId=job_id, state="merging")
+            elif "[ExtractAudio]" in line:
+                emit("status", jobId=job_id, state="extracting_audio")
+
+    proc.wait()
+    stderr_thread.join(timeout=1)
+
+    if cancelled:
+        emit("status", jobId=job_id, state="cancelled")
+        sys.exit(130)
+    if proc.returncode == 0:
+        emit("completed", jobId=job_id, path=completed_path or dest_dir)
+        sys.exit(0)
+    else:
+        err_msg = "".join(stderr_lines).strip() or f"Process exited with code {proc.returncode}"
+        emit("failed", jobId=job_id, error=err_msg)
+        sys.exit(proc.returncode)
+
+if __name__ == "__main__":
+    main()

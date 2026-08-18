@@ -1,12 +1,30 @@
 #!/usr/bin/env bash
 # omaStream search provider using yt-dlp.
-# Output is a JSON array of flat YouTube entries for the QML media model.
+# Returns normalized JSON list of search results.
+
+set -euo pipefail
 
 QUERY="${1:-}"
+LIMIT="${2:-30}"
 
 if [ -z "$QUERY" ]; then
     printf '[]\n'
     exit 0
+fi
+
+# Ensure numeric limit
+if ! [[ "$LIMIT" =~ ^[0-9]+$ ]]; then
+    LIMIT=30
+fi
+
+# Run yt-dlp flat-playlist search
+if ! command -v yt-dlp >/dev/null 2>&1; then
+    printf 'yt-dlp is not installed\n' >&2
+    exit 127
+fi
+if ! command -v jq >/dev/null 2>&1; then
+    printf 'jq is not installed\n' >&2
+    exit 127
 fi
 
 yt-dlp \
@@ -14,4 +32,5 @@ yt-dlp \
     --dump-json \
     --skip-download \
     --no-warnings \
-    "ytsearch12:${QUERY}" 2>/dev/null | jq -s '.' || printf '[]\n'
+    --ignore-errors \
+    "ytsearch${LIMIT}:${QUERY}" 2>/dev/null | jq -s '.'

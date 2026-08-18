@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# omaStream format inspector using yt-dlp.
+# Usage: omastream-formats <videoId_or_url>
+
+set -euo pipefail
+
+TARGET="${1:-}"
+
+if [ -z "$TARGET" ]; then
+    printf '{"formats":[]}\n'
+    exit 0
+fi
+
+if [[ "$TARGET" != http* ]]; then
+    URL="https://www.youtube.com/watch?v=${TARGET}"
+else
+    URL="$TARGET"
+fi
+
+yt-dlp \
+    --dump-json \
+    --skip-download \
+    --no-warnings \
+    --no-playlist \
+    "$URL" 2>/dev/null | jq '{
+        id: .id,
+        title: .title,
+        duration: .duration,
+        formats: [.formats[] | {
+            format_id: .format_id,
+            ext: .ext,
+            resolution: .resolution,
+            width: .width,
+            height: .height,
+            fps: .fps,
+            vcodec: .vcodec,
+            acodec: .acodec,
+            filesize: .filesize,
+            filesize_approx: .filesize_approx,
+            tbr: .tbr,
+            vbr: .vbr,
+            abr: .abr,
+            protocol: .protocol,
+            format_note: .format_note
+        }]
+    }' 2>/dev/null || printf '{"formats":[]}\n'

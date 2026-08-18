@@ -8,6 +8,8 @@ import qs.Commons
 import qs.Ui
 
 import "services/MediaModel.js" as MediaModel
+import "views"
+import "components"
 
 Item {
   id: root
@@ -16,43 +18,37 @@ Item {
   property var manifest: null
   property var service: null
   property bool opened: false
-  property var videoList: []
-  property int selectedIndex: -1
-  property var selectedVideo: null
+
+  property string currentMode: "discover" // "discover", "downloads"
+  property var customDownloadTarget: null
+
+  // Search state
+  property var rawVideoList: []
   property bool isSearching: false
   property string errorMessage: ""
   property string currentQuery: ""
+  property int searchSerial: 0
 
-  // Playback state is owned by the keep-loaded plugin service.
-  readonly property bool playerRunning: service ? service.running : false
-  readonly property bool playerPaused: service ? service.paused : false
-  readonly property string playingTitle: service && service.currentItem ? service.currentItem.title || "" : ""
-  readonly property string playingAuthor: service && service.currentItem ? service.currentItem.author || "" : ""
-  readonly property string playingThumb: service && service.currentItem ? service.currentItem.artworkUrl || "" : ""
-  readonly property string playingVideoId: service && service.currentItem ? service.currentItem.id || "" : ""
-  readonly property int playerVolume: service ? service.volume : 70
-  readonly property string playerMode: service ? service.mode : "none"
-  readonly property bool playerResolving: service ? service.resolving : false
-  readonly property int playerPosition: service ? service.position : 0
-  readonly property int playerDuration: service ? service.duration : 0
-  readonly property bool playerSeekable: service ? service.seekable : false
-  readonly property bool playerMuted: service ? service.muted : false
-  readonly property bool playerBuffering: service ? service.buffering : false
-  readonly property string playerError: service ? service.errorMessage || "" : ""
-  readonly property bool selectedIsPlaying: playerRunning
-    && selectedVideo
-    && playingVideoId === selectedVideo.videoId
-  readonly property bool inlineVideoActive: (playerRunning || playerResolving || playerError)
-    && playerMode === "video"
-    && selectedVideo
-    && playingVideoId === selectedVideo.videoId
+  property color foreground: Color.menu.text
+  property color accent: Color.accent
+  property color dim: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.56)
+  property color faint: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
+
+  // Fullscreen state
   property bool fullscreen: false
   property bool controlsVisible: true
 
-  readonly property string searchScriptPath: Qt.resolvedUrl("scripts/omastream-search").toString().replace(/^file:\/\//, "")
-  readonly property string downloadScriptPath: Qt.resolvedUrl("scripts/omastream-download").toString().replace(/^file:\/\//, "")
+  // Playback state references
+  readonly property bool playerRunning: service ? service.running : false
+  readonly property bool playerPaused: service ? service.paused : false
+  readonly property bool playerActive: service ? service.playbackActive : false
+  readonly property string playingTitle: service && service.currentItem ? service.currentItem.title || "" : ""
+  readonly property string playingAuthor: service && service.currentItem ? service.currentItem.author || "" : ""
+  readonly property string playingThumb: service && service.currentItem ? service.currentItem.artworkUrl || "" : ""
+  readonly property int activeDownloadCount: service && service.downloads ? service.downloads.activeCount : 0
 
-  // Consistent Omarchy style sizing
+  readonly property string searchScriptPath: Qt.resolvedUrl("scripts/omastream-search").toString().replace(/^file:\/\//, "")
+
   readonly property int cardWidth: Math.min(Style.space(1100), (panel ? panel.width : 1200) - Style.gapsOut * 2)
   readonly property int cardHeight: Math.min(Style.space(720), (panel ? panel.height : 800) - Style.gapsOut * 2)
 
@@ -72,11 +68,14 @@ Item {
 
   function open(payloadJson) {
     root.opened = true
-    Qt.callLater(function() { searchInput.forceActiveFocus() })
+    if (root.currentMode === "discover") {
+      Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+    }
   }
 
   function close() {
     root.opened = false
+    if (searchProcess.running) searchProcess.running = false
   }
 
   function dismiss() {
@@ -91,16 +90,19 @@ Item {
   }
 
   onServiceChanged: attachVideoOutput()
-
   Component.onCompleted: attachVideoOutput()
 
   function attachVideoOutput() {
-    if (root.service)
-      root.service.videoOutput = root.fullscreen ? fullscreenVideoOutput : videoOutputArea
+    if (!root.service) return
+    if (root.fullscreen) {
+      root.service.videoOutput = fullscreenVideoOutput
+    } else {
+      root.service.videoOutput = discoverView.playerVideoOutput
+    }
   }
 
   function setFullscreen(enabled) {
-    root.fullscreen = enabled && root.playerMode === "video"
+    root.fullscreen = enabled && root.service && root.service.mode === "video"
     root.controlsVisible = true
     attachVideoOutput()
     if (root.fullscreen) fullscreenControlsTimer.restart()
@@ -111,18 +113,25 @@ Item {
     setFullscreen(!root.fullscreen)
   }
 
-  function playSelectedVideo() {
-    if (!root.selectedVideo) return
-    root.runPlayer("play", root.selectedVideo.videoId, "video",
-      root.selectedVideo.title, root.selectedVideo.author,
-      root.selectedVideo.thumbnailUrl)
-    keyCatcher.forceActiveFocus()
+  function performSearch(query) {
+    if (!query || query.trim() === "") return
+    if (searchProcess.running) searchProcess.running = false
+    root.currentQuery = query.trim()
+    root.isSearching = true
+    root.errorMessage = ""
+    root.rawVideoList = []
+    root.searchSerial += 1
+
+    searchProcess.activeSerial = root.searchSerial
+    searchProcess.command = [root.searchScriptPath, query.trim(), "30"]
+    searchProcess.running = true
   }
 
-  function toggleInlinePlayback() {
-    if (root.inlineVideoActive) root.runPlayer("toggle", "", "", "", "", "")
-    else root.playSelectedVideo()
-    keyCatcher.forceActiveFocus()
+  function playMedia(item, options) {
+    if (!root.service || !item) return
+    root.service.playMedia(item, options)
+    root.currentMode = "discover"
+    attachVideoOutput()
   }
 
   function formatTime(milliseconds) {
@@ -136,88 +145,56 @@ Item {
     return minutes + ":" + secondText
   }
 
-  function runPlayer(action, vId, mode, title, author, thumb) {
-    if (!root.service) return
-
-    if (action === "toggle") {
-      root.service.togglePlayback()
-    } else if (action === "stop") {
-      root.service.stop()
-    } else if (action === "play") {
-      root.service.playMedia({
-        id: vId,
-        sourceType: "youtube",
-        mediaType: "video",
-        title: title,
-        author: author,
-        artworkUrl: thumb,
-        providerData: { videoId: vId }
-      }, { mode: mode })
-    } else if (action === "volume") {
-      root.service.setVolume(parseInt(vId) || 0)
-    }
+  function quickDownload(item) {
+    if (!root.service || !root.service.downloads || !item) return
+    root.service.downloads.startDownload(item, {
+      formatMode: "video_audio",
+      container: "mp4",
+      formatId: "best",
+      qualityLabel: "Best Available",
+      destination: "~/Downloads"
+    })
   }
 
-  function performSearch(query) {
-    if (!query || query.trim() === "") return
-    root.currentQuery = query.trim()
-    root.isSearching = true
-    root.errorMessage = ""
-    root.videoList = []
-    root.selectedIndex = -1
-    root.selectedVideo = null
-
-    searchProcess.command = [root.searchScriptPath, query.trim()]
-    searchProcess.running = true
+  function openCustomDownload(item) {
+    root.customDownloadTarget = item
+    customDownloadModal.open()
   }
-
-  function selectVideo(index) {
-    if (index >= 0 && index < root.videoList.length) {
-      root.selectedIndex = index
-      root.selectedVideo = root.videoList[index]
-    }
-  }
-
-  function downloadCurrentVideo() {
-    if (!root.selectedVideo) return
-    downloadProcess.command = [root.downloadScriptPath, root.selectedVideo.videoId]
-    downloadProcess.running = true
-  }
-
-
 
   Process {
     id: searchProcess
+    property int activeSerial: 0
     command: []
     stdout: StdioCollector {
       id: searchCollector
       waitForEnd: true
     }
+    stderr: StdioCollector {
+      id: searchStderr
+      waitForEnd: true
+    }
     onExited: function(exitCode) {
+      if (searchProcess.activeSerial !== root.searchSerial) return
       root.isSearching = false
+
       var rawOutput = String(searchCollector.text || "").trim()
-      if (exitCode !== 0 || !rawOutput) {
-        root.errorMessage = "Search process failed."
+      if (exitCode !== 0 || !rawOutput || rawOutput === "[]") {
+        root.errorMessage = String(searchStderr.text || "").trim() || (rawOutput === "[]"
+          ? "No videos found matching: \"" + root.currentQuery + "\""
+          : "Search failed. Check that yt-dlp and jq are installed.")
         return
       }
       try {
         var parsedJson = JSON.parse(rawOutput)
         var cards = MediaModel.parseSearchResults(parsedJson)
-        root.videoList = cards
-        if (cards.length > 0) {
-          root.selectVideo(0)
-        } else {
+        root.rawVideoList = cards
+        if (cards.length === 0) {
           root.errorMessage = "No videos found matching: \"" + root.currentQuery + "\""
         }
       } catch (err) {
         root.errorMessage = "Failed to parse search results."
       }
     }
-  }
-
-  Process {
-    id: downloadProcess
-    command: []
   }
 
   PanelWindow {
@@ -236,7 +213,6 @@ Item {
       id: panelHover
     }
 
-    // Main Card Surface (Exact Radio Atlas theme spec)
     BorderSurface {
       id: card
       width: root.fullscreen ? parent.width : root.cardWidth
@@ -244,18 +220,7 @@ Item {
       anchors.centerIn: parent
       color: Color.menu.background
       borderSpec: Border.surfaceSpec("menu", "border", Color.menu.border, Math.max(1, Style.normalBorderWidth))
-      radius: Style.cornerRadius
-
-      MouseArea {
-        id: cardMouse
-        anchors.fill: parent
-        onClicked: keyCatcher.forceActiveFocus()
-      }
-
-      HoverHandler {
-        id: cardHover
-        onHoveredChanged: if (hovered) keyCatcher.forceActiveFocus()
-      }
+      radius: root.fullscreen ? 0 : Style.cornerRadius
 
       Item {
         id: keyCatcher
@@ -265,27 +230,12 @@ Item {
 
         Keys.priority: Keys.AfterItem
         Keys.onPressed: function(event) {
-          if (searchInput.activeFocus) {
-            if (event.key === Qt.Key_Escape) {
-              if (searchInput.text) {
-                searchInput.clear()
-              } else {
-                keyCatcher.forceActiveFocus()
-              }
-              event.accepted = true
-            }
-            return
-          }
           if (event.key === Qt.Key_Escape) {
             if (root.fullscreen) root.setFullscreen(false)
             else root.dismiss()
             event.accepted = true
-          } else if (event.key === Qt.Key_Slash) {
-            searchInput.forceActiveFocus()
-            searchInput.selectAll()
-            event.accepted = true
           } else if (event.key === Qt.Key_Space) {
-            if (root.playerRunning) root.runPlayer("toggle", "", "", "", "", "")
+            if (root.service) root.service.togglePlayback()
             event.accepted = true
           } else if (event.key === Qt.Key_Left) {
             if (root.service) root.service.seekRelative(-10000)
@@ -294,835 +244,256 @@ Item {
             if (root.service) root.service.seekRelative(10000)
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
-            if (root.service) root.service.setVolume(root.playerVolume + 5)
+            if (root.service) root.service.setVolume(root.service.volume + 5)
             event.accepted = true
           } else if (event.key === Qt.Key_Down) {
-            if (root.service) root.service.setVolume(root.playerVolume - 5)
-            event.accepted = true
-          } else if (event.key === Qt.Key_M) {
-            if (root.service) root.service.toggleMute()
+            if (root.service) root.service.setVolume(root.service.volume - 5)
             event.accepted = true
           } else if (event.key === Qt.Key_F) {
             root.toggleFullscreen()
             event.accepted = true
           }
         }
-      }
 
-      // Fullscreen player surface. It reuses the service MediaPlayer and only
-      // changes the output target and presentation chrome.
-      Item {
-        id: fullscreenPlayer
-        anchors.fill: parent
-        visible: root.fullscreen
-        z: 20
-
+        // Fullscreen Mode Surface
         Rectangle {
           anchors.fill: parent
           color: "#000000"
-        }
+          visible: root.fullscreen
 
-        VideoOutput {
-          id: fullscreenVideoOutput
-          anchors.fill: parent
-          fillMode: VideoOutput.PreserveAspectFit
-        }
-
-        MouseArea {
-          id: fullscreenMouseArea
-          anchors.fill: parent
-          hoverEnabled: true
-          onEntered: {
-            root.controlsVisible = true
-            if (!root.playerPaused) fullscreenControlsTimer.restart()
+          VideoOutput {
+            id: fullscreenVideoOutput
+            anchors.fill: parent
+            fillMode: VideoOutput.PreserveAspectFit
           }
-          onPositionChanged: {
-            root.controlsVisible = true
-            if (!root.playerPaused) fullscreenControlsTimer.restart()
-          }
-          onClicked: {
-            root.controlsVisible = true
-            if (!root.playerPaused) fullscreenControlsTimer.restart()
-          }
-        }
 
-        Rectangle {
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.bottom: parent.bottom
-          height: Style.space(112)
-          color: "#cc000000"
-          visible: root.controlsVisible
+          Rectangle {
+            id: fullscreenLoadingOverlay
+            anchors.centerIn: parent
+            width: Style.space(52)
+            height: width
+            radius: width / 2
+            color: "#cc000000"
+            visible: root.service && root.service.loading
 
-          Column {
+            Text {
+              anchors.centerIn: parent
+              text: "\uf110"
+              color: Color.accent
+              font.pixelSize: Style.font.title
+              transformOrigin: Item.Center
+
+              RotationAnimation on rotation {
+                from: 0
+                to: 360
+                duration: 900
+                loops: Animation.Infinite
+                running: fullscreenLoadingOverlay.visible
+              }
+            }
+          }
+
+          HoverHandler {
+            id: fullscreenHover
+            onHoveredChanged: {
+              root.controlsVisible = true
+              if (!root.playerPaused) fullscreenControlsTimer.restart()
+            }
+          }
+
+          // Fullscreen Controls Overlay - Top Bar
+          Rectangle {
+            anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.margins: Style.spacing.panelPadding
-            spacing: Style.spacing.sm
-
-            PanelSlider {
-              width: parent.width
-              minimum: 0
-              maximum: Math.max(1, root.playerDuration)
-              step: 1000
-              value: root.playerPosition
-              enabled: root.playerSeekable
-              trackColor: "#666666"
-              fillColor: Color.accent
-              knobColor: "#ffffff"
-              onMoved: function(value) { if (root.service) root.service.seek(value) }
-            }
+            height: Style.space(56)
+            color: "#cc000000"
+            visible: root.controlsVisible
 
             Row {
-              width: parent.width
-              spacing: Style.spacing.sm
-
-              Button {
-                id: fsPlayBtn
-                iconText: root.playerRunning && !root.playerPaused ? "\uf04c" : "\uf04b"
-                tooltipText: root.playerPaused ? "Play" : "Pause"
-                foreground: "#ffffff"
-                accent: Color.accent
-                onClicked: root.runPlayer("toggle", "", "", "", "", "")
-              }
+              anchors.fill: parent
+              anchors.margins: Style.gapsOut
+              spacing: Style.gapsOut
 
               Text {
-                id: fsTimeText
-                text: root.formatTime(root.playerPosition) + " / " + root.formatTime(root.playerDuration)
+                text: root.playingTitle
+                font.pixelSize: Style.font.title
+                font.bold: true
                 color: "#ffffff"
-                font.family: Style.font.menuFamily
-                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+                width: parent.width - fsCloseBtn.width - Style.gapsOut
                 anchors.verticalCenter: parent.verticalCenter
               }
 
-              Item {
-                width: Math.max(0, parent.width - fsPlayBtn.width - fsTimeText.width - fsMuteBtn.width - Style.space(72) - fsExitBtn.width - Style.spacing.sm * 5)
-                height: 1
-              }
-
               Button {
-                id: fsMuteBtn
-                focusable: true
-                iconText: root.playerMuted || root.playerVolume === 0 ? "\uf026" : (root.playerVolume < 0.5 ? "\uf027" : "\uf028")
-                tooltipText: root.playerMuted ? "Unmute (M)" : "Mute (M)"
-                foreground: "#ffffff"
-                accent: Color.accent
-                onClicked: if (root.service) root.service.toggleMute()
-              }
-
-              PanelSlider {
-                width: Style.space(72)
-                anchors.verticalCenter: parent.verticalCenter
-                minimum: 0
-                maximum: 1
-                value: root.playerVolume
-                trackColor: "#666666"
-                fillColor: Color.accent
-                knobColor: "#ffffff"
-                onMoved: function(value) { if (root.service) root.service.setVolume(value) }
-              }
-
-              Button {
-                id: fsExitBtn
+                id: fsCloseBtn
+                text: "Exit Fullscreen"
                 iconText: "\uf066"
-                tooltipText: "Exit fullscreen"
-                foreground: "#ffffff"
-                accent: Color.accent
                 onClicked: root.setFullscreen(false)
               }
             }
           }
-        }
-      }
 
-      // ==========================================
-      // 1. TOP HEADER BAR
-      // ==========================================
-      Item {
-        id: header
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
-        height: Style.space(64)
-        z: 2
-
-        Row {
-          anchors.left: parent.left
-          anchors.leftMargin: Style.spacing.panelPadding
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.spacing.md
-
-          Text {
-            text: "OMA STREAM"
-            font.family: Style.font.menuFamily
-            font.pixelSize: Style.font.heading
-            font.bold: true
-            color: Color.menu.text
-            anchors.verticalCenter: parent.verticalCenter
-          }
-
-          // Live / Active status dot
+          // Fullscreen Controls Overlay - Bottom Transport Bar
           Rectangle {
-            width: Style.space(6)
-            height: width
-            radius: width / 2
-            color: root.playerRunning ? (root.playerPaused ? Color.urgent : Color.accent) : Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.25)
-            anchors.verticalCenter: parent.verticalCenter
-          }
-        }
-
-        // Header Right: Settings & Dismiss (Official Button components)
-        Row {
-          id: headerRightControls
-          anchors.right: parent.right
-          anchors.rightMargin: Style.spacing.md
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.spacing.xs
-
-          Button {
-            iconText: "\uf00d" // Close X
-            tooltipText: "Close (Esc)"
-            foreground: Color.menu.text
-            accent: Color.urgent
-            onClicked: root.dismiss()
-          }
-        }
-
-        // Search Field
-        TextField {
-          id: searchInput
-          anchors.right: headerRightControls.left
-          anchors.rightMargin: Style.spacing.md
-          anchors.verticalCenter: parent.verticalCenter
-          width: Math.min(Style.space(310), card.width * 0.3)
-          placeholderText: "Search YouTube videos..."
-          foreground: Color.menu.text
-          accent: Color.accent
-          onAccepted: {
-            if (text.trim()) root.performSearch(text.trim())
-          }
-        }
-
-        // Header Divider Line
-        Rectangle {
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.bottom: parent.bottom
-          height: 1
-          color: Qt.rgba(Color.menu.border.r, Color.menu.border.g, Color.menu.border.b, 0.2)
-        }
-      }
-
-      // ==========================================
-      // 2. INTEGRATED BOTTOM PLAYER DOCK
-      // ==========================================
-      Item {
-        id: footer
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: Style.space(104)
-        z: 2
-
-        // Bottom Player Divider Line
-        Rectangle {
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.top: parent.top
-          height: 1
-          color: Qt.rgba(Color.menu.border.r, Color.menu.border.g, Color.menu.border.b, 0.2)
-        }
-
-        Column {
-          anchors.fill: parent
-          anchors.leftMargin: Style.spacing.panelPadding
-          anchors.rightMargin: Style.spacing.panelPadding
-          anchors.topMargin: Style.spacing.xs
-          anchors.bottomMargin: Style.spacing.xs
-          spacing: Style.spacing.xs
-
-
-
-          Row {
-            width: parent.width
-            height: parent.height - Style.space(28)
-            spacing: Style.spacing.md
-
-          // Left Section: Now Playing Metadata (Fixed width so it never overlaps controls)
-          Row {
-            width: parent.width - transportControls.width - Style.spacing.md - 10
-            height: parent.height
-            spacing: Style.spacing.sm
-            anchors.verticalCenter: parent.verticalCenter
-            clip: true
-
-            // Thumbnail
-            Rectangle {
-              width: Style.space(42)
-              height: Style.space(42)
-              radius: Math.max(2, Style.cornerRadius - 4)
-              color: "#181818"
-              anchors.verticalCenter: parent.verticalCenter
-              clip: true
-
-              Image {
-                anchors.fill: parent
-                source: root.playingThumb
-                fillMode: Image.PreserveAspectCrop
-                visible: root.playingThumb.length > 0
-              }
-
-              Text {
-                anchors.centerIn: parent
-                text: "\uf03d"
-                font.family: Style.font.family
-                font.pixelSize: 16
-                color: Color.accent
-                visible: !root.playingThumb
-              }
-            }
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: Style.space(80)
+            color: "#cc000000"
+            visible: root.controlsVisible
 
             Column {
-              anchors.verticalCenter: parent.verticalCenter
-              width: parent.width - Style.space(52)
-              spacing: 2
-              clip: true
+              anchors.fill: parent
+              anchors.margins: Style.gapsOut
+              spacing: Style.gapsOut / 2
 
-              Text {
+              // Scrubber & Time Bar
+              Row {
                 width: parent.width
-                text: root.playerRunning ? root.playingTitle : "No audio currently playing"
-                color: Color.menu.text
-                font.family: Style.font.menuFamily
-                font.pixelSize: Style.font.bodySmall
-                font.bold: true
-                elide: Text.ElideRight
-              }
-
-              Text {
-                width: parent.width
-                text: root.playerRunning || root.playerResolving ? (root.playerPaused && !root.playerResolving ? "Paused" : "Playing · " + root.playingAuthor) : "Choose a stream to begin playback"
-                color: root.playerResolving || root.playerRunning ? (root.playerPaused && !root.playerResolving ? Color.urgent : Color.accent) : Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.45)
-                font.family: Style.font.menuFamily
-                font.pixelSize: Style.font.caption
-                elide: Text.ElideRight
-              }
-            }
-          }
-
-          // Center Section: Transport Controls (Play/Pause, Stop) using qs.Ui Button
-          Row {
-            id: transportControls
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.spacing.xs
-
-            Button {
-              iconText: root.playerRunning && !root.playerPaused ? "\uf04c" : "\uf04b"
-              tooltipText: root.playerRunning && !root.playerPaused ? "Pause" : "Play"
-              enabled: root.playerRunning
-              foreground: Color.menu.text
-              accent: Color.accent
-              onClicked: root.runPlayer("toggle", "", "", "", "", "")
-            }
-
-            Button {
-              iconText: "\uf04d"
-              tooltipText: "Stop playback"
-              enabled: root.playerRunning
-              foreground: Color.menu.text
-              accent: Color.urgent
-              onClicked: root.runPlayer("stop", "", "", "", "", "")
-            }
-          }
-
-
-        }
-      }
-      }
-
-      // ==========================================
-      // 3. MAIN SPLIT BODY AREA (Master / Detail)
-      // ==========================================
-      Item {
-        id: body
-        anchors.top: header.bottom
-        anchors.bottom: footer.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-
-        // Search and detail view
-        Item {
-          anchors.fill: parent
-
-          Row {
-            anchors.fill: parent
-            spacing: 0
-
-            // ----------------------------------------
-            // LEFT: Master Video Search Results (40% width)
-            // ----------------------------------------
-            Item {
-              width: Math.floor(parent.width * 0.40)
-              height: parent.height
-
-              // Empty State
-              Column {
-                anchors.centerIn: parent
-                spacing: Style.spacing.md
-                visible: !root.isSearching && root.videoList.length === 0
+                spacing: Style.gapsOut
 
                 Text {
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  text: "\uf167" // YouTube icon
-                  font.family: Style.font.family
-                  font.pixelSize: 42
-                  color: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.6)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: root.formatTime(root.service ? root.service.position : 0)
+                  font.pixelSize: Style.font.body
+                  color: "#cccccc"
+                  width: Style.space(50)
                 }
 
-                Text {
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  text: root.errorMessage ? root.errorMessage : "Search for a video to start streaming"
-                  font.family: Style.font.menuFamily
-                  font.pixelSize: Style.font.bodySmall
-                  color: root.errorMessage ? Color.urgent : Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.5)
-                }
-              }
+                Rectangle {
+                  width: parent.width - Style.space(100) - Style.gapsOut * 2
+                  height: Style.space(8)
+                  radius: height / 2
+                  color: "#44ffffff"
+                  anchors.verticalCenter: parent.verticalCenter
 
-              // Loading State
-              Column {
-                anchors.centerIn: parent
-                spacing: Style.spacing.sm
-                visible: root.isSearching
+                  Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: {
+                      var dur = root.service ? root.service.duration : 0
+                      var pos = root.service ? root.service.position : 0
+                      if (dur <= 0) return 0
+                      return Math.max(height, parent.width * (pos / dur))
+                    }
+                    radius: height / 2
+                    color: Color.accent
+                  }
 
-                Text {
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  text: "\uf110" // Spinner
-                  font.family: Style.font.family
-                  font.pixelSize: 28
-                  color: Color.accent
-
-                  NumberAnimation on rotation {
-                    from: 0; to: 360; duration: 1000
-                    loops: Animation.Infinite; running: root.isSearching
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: function(mouse) {
+                      if (!root.service || !root.service.duration) return
+                      var ratio = mouse.x / width
+                      var targetMs = ratio * root.service.duration
+                      root.service.seek(targetMs)
+                    }
                   }
                 }
 
                 Text {
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  text: "LOADING SEARCH RESULTS"
-                  font.family: Style.font.menuFamily
-                  font.pixelSize: Style.font.caption
-                  color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.5)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: root.formatTime(root.service ? root.service.duration : 0)
+                  font.pixelSize: Style.font.body
+                  color: "#cccccc"
+                  width: Style.space(50)
+                  horizontalAlignment: Text.AlignRight
                 }
               }
 
-              // Video List View
-              ListView {
-                id: videoListView
-                anchors.fill: parent
-                anchors.margins: Style.spacing.sm
-                spacing: Style.spacing.xs
-                clip: true
-                visible: !root.isSearching && root.videoList.length > 0
-                model: root.videoList
+              // Transport Buttons
+              Row {
+                width: parent.width
+                spacing: Style.gapsOut
 
-                delegate: BorderSurface {
-                  id: itemCard
-                  width: ListView.view.width
-                  height: Style.space(72)
-                  radius: Style.cornerRadius
-                  color: root.selectedIndex === index
-                    ? Style.selectedFillFor(Color.menu.text, Color.accent)
-                    : (cardMouseHover.containsMouse ? Style.hoverFillFor(Color.menu.text, Color.accent) : "transparent")
-                  borderSpec: root.selectedIndex === index
-                    ? Border.controlSpec("selected", Color.menu.text, Color.accent)
-                    : (cardMouseHover.containsMouse ? Border.controlSpec("hover-cursor", Color.menu.text, Color.accent) : Border.none())
+                Row {
+                  spacing: Style.gapsOut / 2
+                  anchors.verticalCenter: parent.verticalCenter
 
-                  MouseArea {
-                    id: cardMouseHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
+                  Button {
+                    iconText: "\uf04a"
+                    tooltipText: "Seek -10s"
+                    onClicked: if (root.service) root.service.seekRelative(-10000)
+                  }
+
+                  Button {
+                    iconText: (root.service && root.service.running && !root.service.paused) ? "\uf04c" : "\uf04b"
+                    selected: true
+                    active: true
+                    tooltipText: (root.service && root.service.running && !root.service.paused) ? "Pause" : "Play"
+                    onClicked: if (root.service) root.service.togglePlayback()
+                  }
+
+                  Button {
+                    iconText: "\uf04e"
+                    tooltipText: "Seek +10s"
+                    onClicked: if (root.service) root.service.seekRelative(10000)
+                  }
+
+                  Button {
+                    iconText: "\uf04d"
+                    tooltipText: "Stop"
+                    onClicked: if (root.service) root.service.stop()
+                  }
+                }
+
+                Item { width: Style.space(16); height: 1 }
+
+                Row {
+                  spacing: Style.gapsOut
+                  anchors.verticalCenter: parent.verticalCenter
+
+                  Button {
+                    text: ((root.service ? root.service.playbackRate : 1.0) + "x")
+                    tooltipText: "Cycle Speed"
                     onClicked: {
-                      root.selectVideo(index)
-                      root.playSelectedVideo()
+                      if (!root.service) return
+                      var r = root.service.playbackRate
+                      if (r === 1.0) root.service.setPlaybackRate(1.25)
+                      else if (r === 1.25) root.service.setPlaybackRate(1.5)
+                      else if (r === 1.5) root.service.setPlaybackRate(2.0)
+                      else if (r === 2.0) root.service.setPlaybackRate(0.75)
+                      else root.service.setPlaybackRate(1.0)
                     }
                   }
 
                   Row {
-                    anchors.fill: parent
-                    anchors.margins: Style.space(8)
-                    spacing: Style.spacing.sm
+                    spacing: Style.gapsOut / 2
+                    anchors.verticalCenter: parent.verticalCenter
 
-                    // Thumbnail
+                    Button {
+                      iconText: (root.service && root.service.muted) ? "\uf6a9" : "\uf028"
+                      onClicked: if (root.service) root.service.toggleMute()
+                    }
+
                     Rectangle {
-                      width: Style.space(88)
-                      height: parent.height
-                      radius: Math.max(2, Style.cornerRadius - 2)
-                      color: "#181818"
-                      clip: true
+                      width: Style.space(100)
+                      height: Style.space(8)
+                      radius: height / 2
+                      color: "#44ffffff"
+                      anchors.verticalCenter: parent.verticalCenter
 
-                      Image {
-                        anchors.fill: parent
-                        source: modelData.thumbnailUrl
-                        fillMode: Image.PreserveAspectCrop
-                        asynchronous: true
-                      }
-
-                      // Duration Badge
                       Rectangle {
-                        anchors.right: parent.right
+                        anchors.left: parent.left
+                        anchors.top: parent.top
                         anchors.bottom: parent.bottom
-                        anchors.margins: 3
-                        height: 15
-                        width: dLabel.implicitWidth + 6
-                        color: "#d9000000"
-                        radius: 2
-
-                        Text {
-                          id: dLabel
-                          anchors.centerIn: parent
-                          text: modelData.durationText
-                          color: "#ffffff"
-                          font.family: Style.font.family
-                          font.pixelSize: 8
-                          font.bold: true
-                        }
-                      }
-                    }
-
-                    // Title & Channel
-                    Column {
-                      width: parent.width - Style.space(98)
-                      anchors.verticalCenter: parent.verticalCenter
-                      spacing: 2
-
-                      Text {
-                        width: parent.width
-                        text: modelData.title
-                        color: root.selectedIndex === index ? Color.accent : Color.menu.text
-                        font.family: Style.font.menuFamily
-                        font.pixelSize: Style.font.bodySmall
-                        font.bold: root.selectedIndex === index
-                        elide: Text.ElideRight
-                        maximumLineCount: 2
-                        wrapMode: Text.Wrap
-                      }
-
-                      Text {
-                        width: parent.width
-                        text: modelData.author + (modelData.viewCountText ? " · " + modelData.viewCountText : "")
-                        color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.55)
-                        font.family: Style.font.menuFamily
-                        font.pixelSize: Style.font.caption
-                        elide: Text.ElideRight
-                      }
-                    }
-                  }
-                }
-              }
-            }
-
-            // Vertical Split Border Line
-            Rectangle {
-              width: 1
-              height: parent.height
-              color: Qt.rgba(Color.menu.border.r, Color.menu.border.g, Color.menu.border.b, 0.2)
-            }
-
-            // ----------------------------------------
-            // RIGHT: Video Showcase, Details & Actions (60% width)
-            // ----------------------------------------
-            Item {
-              width: parent.width - Math.floor(parent.width * 0.40) - 1
-              height: parent.height
-
-              Item {
-                anchors.fill: parent
-                anchors.margins: Style.spacing.md
-                visible: root.selectedVideo !== null
-
-                Column {
-                  anchors.fill: parent
-                  spacing: Style.spacing.md
-
-                  // Inline video player
-                  Rectangle {
-                    id: inlinePlayer
-                    width: parent.width
-                    height: Math.floor(width * 9 / 16)
-                    radius: Style.cornerRadius
-                    color: "#121212"
-                    clip: true
-                    activeFocusOnTab: true
-
-                    Keys.onSpacePressed: root.toggleInlinePlayback()
-                    Keys.onLeftPressed: if (root.service) root.service.seekRelative(-10000)
-                    Keys.onRightPressed: if (root.service) root.service.seekRelative(10000)
-
-                    HoverHandler { id: inlinePlayerHover }
-
-                    Image {
-                      anchors.fill: parent
-                      source: root.selectedVideo ? root.selectedVideo.thumbnailUrl : ""
-                      fillMode: Image.PreserveAspectCrop
-                      asynchronous: true
-                      visible: !root.inlineVideoActive || root.playerResolving
-                    }
-
-                    VideoOutput {
-                      id: videoOutputArea
-                      anchors.fill: parent
-                      fillMode: VideoOutput.PreserveAspectFit
-                      visible: root.inlineVideoActive && !root.playerResolving
-                    }
-
-                    MouseArea {
-                      anchors.fill: parent
-                      cursorShape: Qt.PointingHandCursor
-                      onClicked: root.toggleInlinePlayback()
-                    }
-
-                    // Keep the thumbnail readable before playback and while resolving.
-                    Rectangle {
-                      anchors.fill: parent
-                      visible: !root.inlineVideoActive || root.playerResolving
-                      gradient: Gradient {
-                        GradientStop { position: 0.0; color: "transparent" }
-                        GradientStop { position: 1.0; color: "#b3000000" }
-                      }
-                    }
-
-                    Rectangle {
-                      anchors.centerIn: parent
-                      width: Math.min(parent.width - Style.spacing.lg * 2, playerStatusText.implicitWidth + Style.spacing.lg)
-                      height: playerStatusText.implicitHeight + Style.spacing.md
-                      radius: Style.cornerRadius
-                      color: "#d9000000"
-                      visible: root.playerError.length > 0 && root.inlineVideoActive
-
-                      Text {
-                        id: playerStatusText
-                        anchors.centerIn: parent
-                        width: Math.min(implicitWidth, inlinePlayer.width - Style.spacing.lg * 3)
-                        text: root.playerError
-                        color: "#ffffff"
-                        font.family: Style.font.menuFamily
-                        font.pixelSize: Style.font.caption
-                        horizontalAlignment: Text.AlignHCenter
-                        wrapMode: Text.Wrap
-                      }
-                    }
-
-                    Rectangle {
-                      anchors.fill: parent
-                      color: "#40000000"
-                      opacity: inlinePlayerHover.hovered || root.playerPaused ? 1 : 0
-                      visible: opacity > 0
-
-                      Behavior on opacity { NumberAnimation { duration: 140 } }
-                    }
-
-                    // Central action mirrors conventional video players.
-                    Button {
-                      anchors.centerIn: parent
-                      visible: (!root.inlineVideoActive || root.playerPaused || root.playerResolving || root.playerBuffering || inlinePlayerHover.hovered)
-                        && root.playerError.length === 0
-                      focusable: true
-                      iconText: root.playerResolving || root.playerBuffering ? "\uf110"
-                        : (root.inlineVideoActive && !root.playerPaused ? "\uf04c" : "\uf04b")
-                      iconSpinning: root.playerResolving || root.playerBuffering
-                      tooltipText: root.playerResolving || root.playerBuffering ? "Loading video"
-                        : (root.inlineVideoActive && !root.playerPaused ? "Pause (Space)" : "Play (Space)")
-                      foreground: "#ffffff"
-                      accent: Color.accent
-                      iconSize: Style.font.heading * 1.5
-                      enabled: !root.playerResolving && !root.playerBuffering
-                      onClicked: root.toggleInlinePlayback()
-                    }
-
-                    Rectangle {
-                      id: inlineControls
-                      anchors.left: parent.left
-                      anchors.right: parent.right
-                      anchors.bottom: parent.bottom
-                      height: Style.space(70)
-                      color: "#d9000000"
-                      opacity: inlinePlayerHover.hovered || root.playerPaused || root.playerResolving ? 1 : 0
-                      visible: opacity > 0 && root.inlineVideoActive
-
-                      Behavior on opacity { NumberAnimation { duration: 140 } }
-
-                      Column {
-                        anchors.fill: parent
-                        anchors.leftMargin: Style.spacing.sm
-                        anchors.rightMargin: Style.spacing.sm
-                        anchors.topMargin: Style.spacing.xs
-                        anchors.bottomMargin: Style.spacing.xs
-                        spacing: Style.spacing.xs
-
-                        PanelSlider {
-                          width: parent.width
-                          minimum: 0
-                          maximum: Math.max(1, root.playerDuration)
-                          step: 1000
-                          value: root.playerPosition
-                          enabled: root.playerSeekable
-                          trackColor: "#666666"
-                          fillColor: Color.accent
-                          knobColor: "#ffffff"
-                          onMoved: function(value) { if (root.service) root.service.seek(value) }
-                        }
-
-                        Row {
-                          width: parent.width
-                          height: Style.space(28)
-                          spacing: Style.spacing.xs
-
-                          Button {
-                            id: inlinePlayButton
-                            focusable: true
-                            iconText: root.playerPaused ? "\uf04b" : "\uf04c"
-                            tooltipText: root.playerPaused ? "Play (Space)" : "Pause (Space)"
-                            foreground: "#ffffff"
-                            accent: Color.accent
-                            onClicked: root.toggleInlinePlayback()
-                          }
-
-                          Text {
-                            id: inlineTimeLabel
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: root.formatTime(root.playerPosition) + " / " + root.formatTime(root.playerDuration)
-                            color: "#ffffff"
-                            font.family: Style.font.menuFamily
-                            font.pixelSize: Style.font.caption
-                          }
-
-                          Item {
-                            width: Math.max(0, parent.width - inlinePlayButton.width
-                              - inlineTimeLabel.width - inlineMuteButton.width
-                              - Style.space(72) - inlineFullscreenButton.width - Style.spacing.xs * 5)
-                            height: 1
-                          }
-
-                          Button {
-                            id: inlineMuteButton
-                            focusable: true
-                            iconText: root.playerMuted || root.playerVolume === 0 ? "\uf026" : (root.playerVolume < 0.5 ? "\uf027" : "\uf028")
-                            tooltipText: root.playerMuted ? "Unmute (M)" : "Mute (M)"
-                            foreground: "#ffffff"
-                            accent: Color.accent
-                            onClicked: if (root.service) root.service.toggleMute()
-                          }
-
-                          PanelSlider {
-                            width: Style.space(72)
-                            anchors.verticalCenter: parent.verticalCenter
-                            minimum: 0
-                            maximum: 1
-                            value: root.playerVolume
-                            trackColor: "#666666"
-                            fillColor: Color.accent
-                            knobColor: "#ffffff"
-                            onMoved: function(value) { if (root.service) root.service.setVolume(value) }
-                          }
-
-                          Button {
-                            id: inlineFullscreenButton
-                            focusable: true
-                            iconText: "\uf065"
-                            tooltipText: "Fullscreen (F)"
-                            foreground: "#ffffff"
-                            accent: Color.accent
-                            onClicked: root.setFullscreen(true)
-                          }
-                        }
-                      }
-                    }
-                  }
-
-                  // Video Title
-                  Text {
-                    width: parent.width
-                    text: root.selectedVideo ? root.selectedVideo.title : ""
-                    color: Color.menu.text
-                    font.family: Style.font.menuFamily
-                    font.pixelSize: Style.font.heading
-                    font.bold: true
-                    elide: Text.ElideRight
-                    maximumLineCount: 2
-                    wrapMode: Text.Wrap
-                  }
-
-                  // Channel & Metrics Info Bar with Download Button
-                  Item {
-                    width: parent.width
-                    height: Style.space(40)
-
-                    Row {
-                      id: infoRow
-                      anchors.left: parent.left
-                      anchors.verticalCenter: parent.verticalCenter
-                      spacing: Style.spacing.md
-
-                      Text {
-                        text: "\uf007 " + (root.selectedVideo ? root.selectedVideo.author : "")
+                        width: Math.max(height, parent.width * ((root.service ? root.service.volume : 70) / 100.0))
+                        radius: height / 2
                         color: Color.accent
-                        font.family: Style.font.menuFamily
-                        font.pixelSize: Style.font.bodySmall
-                        font.bold: true
                       }
 
-                      Text {
-                        text: "\uf06e " + (root.selectedVideo ? root.selectedVideo.viewCountText : "")
-                        color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.65)
-                        font.family: Style.font.menuFamily
-                        font.pixelSize: Style.font.bodySmall
+                      MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: function(mouse) {
+                          if (!root.service) return
+                          var vol = Math.round((mouse.x / width) * 100)
+                          root.service.setVolume(vol)
+                        }
                       }
-
-                      Text {
-                        text: "\uf073 " + (root.selectedVideo ? root.selectedVideo.publishedText : "")
-                        color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.65)
-                        font.family: Style.font.menuFamily
-                        font.pixelSize: Style.font.bodySmall
-                        visible: root.selectedVideo && root.selectedVideo.publishedText !== ""
-                      }
-                    }
-
-                    Button {
-                      id: downloadBtn
-                      anchors.right: parent.right
-                      anchors.verticalCenter: parent.verticalCenter
-                      iconText: "\uf019"
-                      text: "Download"
-                      tooltipText: "Download video and audio to ~/Downloads"
-                      focusable: true
-                      foreground: Color.menu.text
-                      accent: Color.accent
-                      onClicked: root.downloadCurrentVideo()
-                    }
-                  }
-
-                  // Video Description Box
-                  Rectangle {
-                    width: parent.width
-                    height: descText.implicitHeight + Style.spacing.md * 2
-                    radius: Style.cornerRadius
-                    color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.05)
-                    visible: root.selectedVideo && root.selectedVideo.description && root.selectedVideo.description.length > 0
-
-                    Text {
-                      id: descText
-                      anchors.fill: parent
-                      anchors.margins: Style.spacing.md
-                      text: root.selectedVideo ? root.selectedVideo.description : ""
-                      color: Qt.rgba(Color.menu.text.r, Color.menu.text.g, Color.menu.text.b, 0.85)
-                      font.family: Style.font.menuFamily
-                      font.pixelSize: Style.font.bodySmall
-                      wrapMode: Text.Wrap
-                      elide: Text.ElideRight
-                      maximumLineCount: 4
-                      lineHeight: 1.3
                     }
                   }
                 }
@@ -1130,6 +501,168 @@ Item {
             }
           }
         }
+
+        // Normal Card Content (Header Tabs, Active View, Mini Player)
+        Column {
+          anchors.fill: parent
+          anchors.margins: Style.spacing.panelPadding
+          spacing: Style.spacing.md
+          visible: !root.fullscreen
+
+          // Top Header & Mode Navigation Bar
+          Item {
+            width: parent.width
+            height: Style.space(48)
+
+            Row {
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.spacing.md
+
+              // App Brand Title
+              Row {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.spacing.sm
+
+                Text {
+                  text: "\uf03d"
+                  font.pixelSize: Style.font.title
+                  color: root.accent
+                  textFormat: Text.PlainText
+                }
+
+                Text {
+                  text: "omaStream"
+                  font.pixelSize: Style.font.title
+                  font.bold: true
+                  color: root.foreground
+                  textFormat: Text.PlainText
+                }
+              }
+
+              Item { width: Style.spacing.lg; height: 1 }
+
+              // Navigation Tabs
+              Row {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.spacing.xs
+
+                Button {
+                  text: "Discover"
+                  iconText: "\uf002"
+                  selected: root.currentMode === "discover"
+                  active: root.currentMode === "discover"
+                  foreground: root.foreground
+                  accent: root.accent
+                  fontSize: Style.font.caption
+                  onClicked: root.currentMode = "discover"
+                }
+
+                Button {
+                  text: "Downloads" + (root.activeDownloadCount > 0 ? " (" + root.activeDownloadCount + ")" : "")
+                  iconText: "\uf019"
+                  selected: root.currentMode === "downloads"
+                  active: root.currentMode === "downloads"
+                  foreground: root.foreground
+                  accent: root.accent
+                  fontSize: Style.font.caption
+                  onClicked: root.currentMode = "downloads"
+                }
+              }
+            }
+
+            // Close button anchored right
+            Button {
+              anchors.right: parent.right
+              anchors.rightMargin: Style.spacing.md
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "\uf00d"
+              tooltipText: "Close (Esc)"
+              foreground: root.foreground
+              accent: root.accent
+              onClicked: root.dismiss()
+            }
+
+            // Header bottom separator
+            Rectangle {
+              anchors.bottom: parent.bottom
+              anchors.left: parent.left
+              anchors.right: parent.right
+              height: 1
+              color: root.faint
+            }
+          }
+
+          // Active View Container
+          Item {
+            width: parent.width
+            height: parent.height - Style.space(48) - Style.spacing.md
+
+            DiscoverView {
+              id: discoverView
+              anchors.fill: parent
+              visible: root.currentMode === "discover"
+              service: root.service
+              rawVideoList: root.rawVideoList
+              isSearching: root.isSearching
+              errorMessage: root.errorMessage
+              currentQuery: root.currentQuery
+              playerService: root.service
+              playerActive: root.playerActive
+
+              onSearchTriggered: function(q) {
+                root.performSearch(q)
+              }
+
+              onPlayRequested: function(item, opts) {
+                root.playMedia(item, opts)
+              }
+
+              onQuickDownloadRequested: function(item) {
+                root.quickDownload(item)
+              }
+
+              onCustomDownloadRequested: function(item) {
+                root.openCustomDownload(item)
+              }
+
+              onFullscreenRequested: root.setFullscreen(true)
+
+              onQualityChanged: function(formatItem) {
+                if (root.service && root.service.currentItem) {
+                  root.service.playMedia(root.service.currentItem, {
+                    mode: root.service.mode,
+                    formatId: formatItem.id,
+                    formatLabel: formatItem.label
+                  })
+                }
+              }
+            }
+
+
+
+            DownloadsView {
+              id: downloadsView
+              anchors.fill: parent
+              visible: root.currentMode === "downloads"
+              downloadService: root.service ? root.service.downloads : null
+            }
+          }
+
+
+        }
+      }
+    }
+  }
+
+  // Custom Download Modal Sheet
+  CustomDownloadModal {
+    id: customDownloadModal
+    mediaItem: root.customDownloadTarget
+    formats: root.service ? root.service.currentFormats : ({})
+    onDownloadRequested: function(opts) {
+      if (root.service && root.service.downloads && root.customDownloadTarget) {
+        root.service.downloads.startDownload(root.customDownloadTarget, opts)
       }
     }
   }
