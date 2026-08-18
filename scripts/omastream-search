@@ -27,10 +27,20 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 127
 fi
 
-yt-dlp \
-    --flat-playlist \
-    --dump-json \
-    --skip-download \
-    --no-warnings \
-    --ignore-errors \
-    "ytsearch${LIMIT}:${QUERY}" 2>/dev/null | jq -s '.'
+# Force yt-dlp to use GNOME Keyring on unknown WMs
+if [[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] || [[ "${XDG_CURRENT_DESKTOP:-}" == "omarchy" ]] || [ -z "${XDG_CURRENT_DESKTOP:-}" ]; then
+    export XDG_CURRENT_DESKTOP="GNOME"
+fi
+
+BROWSER=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -x "$SCRIPT_DIR/detect-browser.sh" ]; then
+    BROWSER="$("$SCRIPT_DIR/detect-browser.sh" || true)"
+fi
+
+args=(yt-dlp --flat-playlist --dump-json --skip-download --no-warnings --ignore-errors)
+if [ -n "$BROWSER" ]; then
+    args+=(--cookies-from-browser "$BROWSER")
+fi
+
+"${args[@]}" "ytsearch${LIMIT}:${QUERY}" 2>/dev/null | jq -s '.'

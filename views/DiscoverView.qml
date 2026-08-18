@@ -22,6 +22,32 @@ Item {
   property string activeSort: "relevance" // relevance, newest, oldest, views, shortest, longest
   property string activeFilter: "all" // all, videos, live, short, medium, long
   property string activeSource: "youtube"
+  property bool controlsVisible: true
+
+  Timer {
+    id: playerControlsTimer
+    interval: 3000
+    running: false
+    repeat: false
+    onTriggered: {
+      if (root.playerService && !root.playerService.paused && playerSurfaceHover && !playerSurfaceHover.hovered) {
+        root.controlsVisible = false
+      }
+    }
+  }
+
+  Connections {
+    target: root.playerService
+    ignoreUnknownSignals: true
+    function onPausedChanged() {
+      if (root.playerService && root.playerService.paused) {
+        root.controlsVisible = true
+        playerControlsTimer.stop()
+      } else {
+        playerControlsTimer.restart()
+      }
+    }
+  }
   property color foreground: Color.menu.text
   property color accent: Color.accent
   property color dim: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.56)
@@ -94,6 +120,7 @@ Item {
       // Results Count
       Text {
         anchors.left: parent.left
+        anchors.leftMargin: Style.spacing.panelPadding
         anchors.verticalCenter: parent.verticalCenter
         text: (!root.isSearching && root.filteredVideoList.length > 0) ? root.filteredVideoList.length + " results" : ""
         font.pixelSize: Style.font.caption
@@ -105,6 +132,7 @@ Item {
       // Search & Filter Container
       Row {
         anchors.right: parent.right
+        anchors.rightMargin: Style.spacing.panelPadding
         anchors.verticalCenter: parent.verticalCenter
         spacing: Style.spacing.md
 
@@ -132,62 +160,235 @@ Item {
 
           QQC.Popup {
             id: filterPopup
-            y: filterBtn.height + Style.spacing.sm
-            padding: Style.spacing.md
-            background: BorderSurface {
+            parent: root
+            x: Math.max(0, (root.width - width) / 2)
+            y: Math.max(0, (root.height - height) / 2)
+            width: Math.min(Style.space(600), root.width * 0.9)
+            height: Math.min(Style.space(280), root.height * 0.9)
+            modal: true
+            dim: true
+            closePolicy: QQC.Popup.CloseOnEscape | QQC.Popup.CloseOnPressOutside
+            
+            // Nice padding for the modal
+            padding: Style.spacing.panelPadding
+            
+            // State for the two-pane UI
+            property string activeCategory: "sort"
+
+            background: Rectangle {
               color: Color.menu.background
-              borderSpec: Border.controlSpec("normal", root.foreground, root.accent)
+              border.color: root.faint
+              border.width: 1
               radius: Style.cornerRadius
             }
 
-            Column {
-              spacing: Style.spacing.sm
+            contentItem: Item {
+              anchors.fill: parent
+              
+              Row {
+                anchors.fill: parent
+                anchors.margins: Style.space(24)
+                spacing: Style.space(24)
 
-              Text {
-                text: "TYPE"
-                color: root.dim
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                textFormat: Text.PlainText
-              }
+                // Left Pane: Categories
+                Rectangle {
+                  width: (parent.width - Style.space(24) * 2 - 1) * 0.4
+                  height: parent.height
+                  color: "transparent"
 
-              Dropdown {
-                width: Style.space(160)
-                showLabel: false
-                value: root.activeFilter
-                options: [
-                  { value: "all", label: "All types" },
-                  { value: "videos", label: "Videos" },
-                  { value: "live", label: "Live" },
-                  { value: "short", label: "Under 4 min" },
-                  { value: "medium", label: "4 to 20 min" },
-                  { value: "long", label: "Over 20 min" }
-                ]
-                onChanged: function(value) { root.activeFilter = value; filterPopup.close() }
-              }
+                  Column {
+                    anchors.fill: parent
+                    spacing: Style.spacing.sm
 
-              Text {
-                text: "SORT BY"
-                color: root.dim
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                textFormat: Text.PlainText
-                topPadding: Style.spacing.sm
-              }
+                    Repeater {
+                      model: [
+                        { id: "sort", label: "Sort by" },
+                        { id: "type", label: "Type" },
+                        { id: "duration", label: "Duration" }
+                      ]
+                      delegate: Rectangle {
+                        width: parent.width
+                        height: Style.space(32)
+                        color: "transparent"
+                        border.color: filterPopup.activeCategory === modelData.id ? root.foreground : "transparent"
+                        border.width: 1
+                        radius: 2
 
-              Dropdown {
-                width: Style.space(160)
-                showLabel: false
-                value: root.activeSort
-                options: [
-                  { value: "relevance", label: "Relevance" },
-                  { value: "views", label: "Most viewed" },
-                  { value: "newest", label: "Newest" },
-                  { value: "oldest", label: "Oldest" },
-                  { value: "shortest", label: "Shortest" },
-                  { value: "longest", label: "Longest" }
-                ]
-                onChanged: function(value) { root.activeSort = value; filterPopup.close() }
+                        Text {
+                          anchors.fill: parent
+                          anchors.leftMargin: Style.spacing.sm
+                          verticalAlignment: Text.AlignVCenter
+                          text: modelData.label
+                          color: root.foreground
+                          font.pixelSize: Style.font.body
+                          textFormat: Text.PlainText
+                        }
+
+                        MouseArea {
+                          anchors.fill: parent
+                          cursorShape: Qt.PointingHandCursor
+                          onClicked: filterPopup.activeCategory = modelData.id
+                        }
+                      }
+                    }
+
+                    Item { width: 1; height: Style.spacing.md } // Spacer
+
+                    Rectangle {
+                      width: parent.width
+                      height: Style.space(32)
+                      color: "transparent"
+                      Text {
+                        anchors.fill: parent
+                        anchors.leftMargin: Style.spacing.sm
+                        verticalAlignment: Text.AlignVCenter
+                        text: "Reset filters"
+                        color: root.dim
+                        font.pixelSize: Style.font.body
+                        textFormat: Text.PlainText
+                      }
+                      MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                          root.activeFilter = "all"
+                          root.activeSort = "relevance"
+                          filterPopup.close()
+                        }
+                      }
+                    }
+                  }
+                }
+
+                // Vertical Divider
+                Rectangle {
+                  width: 1
+                  height: parent.height
+                  color: root.faint
+                }
+
+                // Right Pane: Options
+                Rectangle {
+                  width: (parent.width - Style.space(24) * 2 - 1) * 0.6
+                  height: parent.height
+                  color: "transparent"
+
+                  Column {
+                    anchors.fill: parent
+                    spacing: Style.spacing.sm
+
+                    // Sort Options
+                    Repeater {
+                      model: filterPopup.activeCategory === "sort" ? [
+                        { id: "relevance", label: "Relevance" },
+                        { id: "views", label: "View count" },
+                        { id: "newest", label: "Upload date" },
+                        { id: "oldest", label: "Oldest" },
+                        { id: "shortest", label: "Shortest" },
+                        { id: "longest", label: "Longest" }
+                      ] : []
+                      delegate: Rectangle {
+                        width: parent.width
+                        height: Style.space(32)
+                        color: "transparent"
+                        border.color: root.activeSort === modelData.id ? root.accent : "transparent"
+                        border.width: 1
+                        radius: 2
+
+                        Text {
+                          anchors.fill: parent
+                          anchors.leftMargin: Style.spacing.sm
+                          verticalAlignment: Text.AlignVCenter
+                          text: modelData.label
+                          color: root.foreground
+                          font.pixelSize: Style.font.body
+                          textFormat: Text.PlainText
+                        }
+
+                        MouseArea {
+                          anchors.fill: parent
+                          cursorShape: Qt.PointingHandCursor
+                          onClicked: {
+                            root.activeSort = modelData.id
+                            filterPopup.close()
+                          }
+                        }
+                      }
+                    }
+
+                    // Type Options
+                    Repeater {
+                      model: filterPopup.activeCategory === "type" ? [
+                        { id: "all", label: "All" },
+                        { id: "videos", label: "Videos" },
+                        { id: "live", label: "Live" }
+                      ] : []
+                      delegate: Rectangle {
+                        width: parent.width
+                        height: Style.space(32)
+                        color: "transparent"
+                        border.color: root.activeFilter === modelData.id ? root.accent : "transparent"
+                        border.width: 1
+                        radius: 2
+
+                        Text {
+                          anchors.fill: parent
+                          anchors.leftMargin: Style.spacing.sm
+                          verticalAlignment: Text.AlignVCenter
+                          text: modelData.label
+                          color: root.foreground
+                          font.pixelSize: Style.font.body
+                          textFormat: Text.PlainText
+                        }
+
+                        MouseArea {
+                          anchors.fill: parent
+                          cursorShape: Qt.PointingHandCursor
+                          onClicked: {
+                            root.activeFilter = modelData.id
+                            filterPopup.close()
+                          }
+                        }
+                      }
+                    }
+
+                    // Duration Options
+                    Repeater {
+                      model: filterPopup.activeCategory === "duration" ? [
+                        { id: "short", label: "Under 4 minutes" },
+                        { id: "medium", label: "4-20 minutes" },
+                        { id: "long", label: "Over 20 minutes" }
+                      ] : []
+                      delegate: Rectangle {
+                        width: parent.width
+                        height: Style.space(32)
+                        color: "transparent"
+                        border.color: root.activeFilter === modelData.id ? root.accent : "transparent"
+                        border.width: 1
+                        radius: 2
+
+                        Text {
+                          anchors.fill: parent
+                          anchors.leftMargin: Style.spacing.sm
+                          verticalAlignment: Text.AlignVCenter
+                          text: modelData.label
+                          color: root.foreground
+                          font.pixelSize: Style.font.body
+                          textFormat: Text.PlainText
+                        }
+
+                        MouseArea {
+                          anchors.fill: parent
+                          cursorShape: Qt.PointingHandCursor
+                          onClicked: {
+                            root.activeFilter = modelData.id
+                            filterPopup.close()
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -205,7 +406,7 @@ Item {
     // Main Split View
     Row {
       width: parent.width
-      height: parent.height - Style.space(42) - Style.space(32) - 1 - Style.spacing.md * 3
+      height: parent.height - (Style.space(42) + 1 + Style.spacing.md * 2)
       spacing: 0
 
       // Left Column: Results List
@@ -218,7 +419,10 @@ Item {
         ListView {
           id: resultListView
           anchors.fill: parent
-          anchors.margins: Style.spacing.sm
+          anchors.leftMargin: Style.spacing.panelPadding
+          anchors.rightMargin: Style.spacing.sm
+          anchors.topMargin: Style.spacing.sm
+          anchors.bottomMargin: Style.spacing.panelPadding
           spacing: Style.spacing.xxs
           model: root.filteredVideoList
           boundsBehavior: Flickable.StopAtBounds
@@ -402,17 +606,30 @@ Item {
 
         Column {
           anchors.fill: parent
-          anchors.margins: Style.spacing.lg
+          anchors.leftMargin: Style.spacing.lg
+          anchors.rightMargin: Style.spacing.panelPadding
+          anchors.topMargin: Style.spacing.lg
+          anchors.bottomMargin: Style.spacing.panelPadding
           spacing: Style.spacing.md
           visible: root.selectedVideo !== null
 
           // Player / Preview Surface
           Rectangle {
             width: parent.width
-            height: parent.height - metaColumn.height - actionRow.height - Style.spacing.panelPadding * 2
+            height: Math.max(10, parent.height - metaColumn.height - actionRow.height - spacer.height - (Style.spacing.md * 3))
             radius: Style.cornerRadius
             color: "#000000"
             clip: true
+
+            HoverHandler {
+              id: playerSurfaceHover
+              onHoveredChanged: {
+                if (hovered) {
+                  root.controlsVisible = true
+                  if (root.playerService && !root.playerService.paused) playerControlsTimer.restart()
+                }
+              }
+            }
 
             // Embedded Video Output (when playing video)
             VideoOutput {
@@ -420,6 +637,15 @@ Item {
               anchors.fill: parent
               fillMode: VideoOutput.PreserveAspectFit
               visible: root.playerActive && root.playerService && root.playerService.mode === "video"
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              visible: root.playerActive
+              onClicked: {
+                if (root.playerService) root.playerService.togglePlayback()
+                parent.forceActiveFocus()
+              }
             }
 
             // Audio Mode Visualization (when playing audio)
@@ -507,7 +733,7 @@ Item {
               anchors.right: parent.right
               height: Style.space(40)
               color: "#99000000"
-              visible: root.playerActive
+              visible: root.playerActive && root.controlsVisible
 
               Row {
                 anchors.fill: parent
@@ -552,14 +778,18 @@ Item {
               anchors.bottom: parent.bottom
               anchors.left: parent.left
               anchors.right: parent.right
-              height: Style.space(72)
+              height: Style.space(88)
               color: "#cc000000"
-              visible: root.playerActive
+              visible: root.playerActive && root.controlsVisible
 
               Column {
-                anchors.fill: parent
-                anchors.margins: Style.spacing.sm
-                spacing: Style.spacing.sm
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: Style.spacing.panelPadding
+                anchors.rightMargin: Style.spacing.panelPadding
+                anchors.bottomMargin: Style.spacing.md
+                spacing: Style.spacing.lg
 
                 // Scrubber & Time Bar
                 Row {
@@ -701,12 +931,24 @@ Item {
                         MouseArea {
                           anchors.fill: parent
                           cursorShape: Qt.PointingHandCursor
+                          onPositionChanged: function(mouse) {
+                            if (!root.playerService || !pressed) return
+                            var vol = Math.max(0, Math.min(100, Math.round((mouse.x / width) * 100)))
+                            root.playerService.setVolume(vol)
+                          }
                           onClicked: function(mouse) {
                             if (!root.playerService) return
-                            var vol = Math.round((mouse.x / width) * 100)
+                            var vol = Math.max(0, Math.min(100, Math.round((mouse.x / width) * 100)))
                             root.playerService.setVolume(vol)
                           }
                         }
+                      }
+
+                      Text {
+                        text: (root.playerService ? Math.round(root.playerService.volume) : 70) + "%"
+                        font.pixelSize: Style.font.caption
+                        color: "#cccccc"
+                        anchors.verticalCenter: parent.verticalCenter
                       }
                     }
                   }
@@ -764,49 +1006,32 @@ Item {
             }
           }
 
-          Item { width: 1; height: 1 }
+          Item { id: spacer; width: 1; height: 1 }
 
           // Action Toolbar
-          Row {
+          Flow {
             id: actionRow
             width: parent.width
             spacing: Style.spacing.xs
 
             Button {
-              text: "Play Video"
-              iconText: "\uf04b"
-              selected: true
-              active: true
-              foreground: root.foreground
-              accent: root.accent
-              onClicked: root.playRequested(root.selectedVideo, { mode: "video" })
-            }
-
-            Button {
               text: "Audio Mode"
               iconText: "\uf028"
               tooltipText: "Play in Audio-only stream mode"
+              selected: true
+              active: true
               foreground: root.foreground
               accent: root.accent
               onClicked: root.playRequested(root.selectedVideo, { mode: "audio" })
             }
 
             Button {
-              text: "Quick Download"
+              text: "Download"
               iconText: "\uf019"
               tooltipText: "Download Best Quality to ~/Downloads"
               foreground: root.foreground
               accent: root.accent
               onClicked: root.quickDownloadRequested(root.selectedVideo)
-            }
-
-            Button {
-              text: "Custom"
-              iconText: "\uf013"
-              tooltipText: "Choose Resolution, Audio-only, Container..."
-              foreground: root.foreground
-              accent: root.accent
-              onClicked: root.customDownloadRequested(root.selectedVideo)
             }
           }
 

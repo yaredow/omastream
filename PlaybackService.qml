@@ -59,6 +59,7 @@ Item {
   property var pendingRequest: null
 
   readonly property string formatsScriptPath: Qt.resolvedUrl("scripts/omastream-formats").toString().replace(/^file:\/\//, "")
+  readonly property string resolveScriptPath: Qt.resolvedUrl("scripts/omastream-resolve").toString().replace(/^file:\/\//, "")
 
   // Keep download service instance inside the long-lived service singleton
   readonly property var downloads: downloadServiceInstance
@@ -119,13 +120,13 @@ Item {
     if (request.item.sourceType === "youtube") {
       var format = "best[protocol^=http]/best"
       if (request.mode === "audio") {
-        format = "bestaudio[protocol^=http]/bestaudio"
+        format = "bestaudio[ext=m4a][protocol^=http]/bestaudio[protocol^=http]/bestaudio"
       } else if (request.formatId && request.formatId !== "auto") {
         format = request.formatId
       }
 
       resolveProcess.command = [
-        "yt-dlp",
+        root.resolveScriptPath,
         "--no-warnings",
         "--extractor-args", root.playbackRetries > 0
           ? "youtube:player_client=mweb,android"

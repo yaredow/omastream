@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as QQC
 import qs.Commons
 import qs.Ui
 
@@ -6,6 +7,11 @@ import "../components"
 
 Item {
   id: root
+
+  property color foreground: Color.menu.text
+  property color accent: Color.accent
+  property color dim: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.56)
+  property color faint: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
 
   property var downloadService: null
   property string filterState: "all" // all, active, completed, failed
@@ -29,22 +35,18 @@ Item {
 
   Column {
     anchors.fill: parent
-    spacing: Style.gapsOut
+    spacing: Style.spacing.md
 
     // Top Header & Actions
-    Rectangle {
+    Item {
       width: parent.width
       height: Style.space(42)
-      radius: 0
-      color: Color.menu.background
-      border.color: Color.menu.border
-      border.width: 0
 
       Row {
         anchors.fill: parent
-        anchors.leftMargin: Style.gapsOut
-        anchors.rightMargin: Style.gapsOut
-        spacing: Style.gapsOut
+        anchors.leftMargin: Style.spacing.panelPadding
+        anchors.rightMargin: Style.spacing.panelPadding
+        spacing: Style.spacing.md
 
         // Filter Tabs
         Row {
@@ -56,6 +58,8 @@ Item {
             selected: root.filterState === "all"
             active: root.filterState === "all"
             onClicked: root.filterState = "all"
+            foreground: root.foreground
+            accent: root.accent
           }
 
           Button {
@@ -63,6 +67,8 @@ Item {
             selected: root.filterState === "active"
             active: root.filterState === "active"
             onClicked: root.filterState = "active"
+            foreground: root.foreground
+            accent: root.accent
           }
 
           Button {
@@ -70,6 +76,8 @@ Item {
             selected: root.filterState === "completed"
             active: root.filterState === "completed"
             onClicked: root.filterState = "completed"
+            foreground: root.foreground
+            accent: root.accent
           }
 
           Button {
@@ -77,6 +85,8 @@ Item {
             selected: root.filterState === "failed"
             active: root.filterState === "failed"
             onClicked: root.filterState = "failed"
+            foreground: root.foreground
+            accent: root.accent
           }
         }
 
@@ -92,6 +102,8 @@ Item {
             iconText: "\uf07b"
             tooltipText: "Open ~/Downloads in File Manager"
             onClicked: if (root.downloadService) root.downloadService.revealInFileManager("")
+            foreground: root.foreground
+            accent: root.accent
           }
 
           Button {
@@ -99,28 +111,34 @@ Item {
             iconText: "\uf1f8"
             tooltipText: "Clear completed and failed downloads"
             onClicked: if (root.downloadService) root.downloadService.clearCompleted()
+            foreground: root.foreground
+            accent: root.accent
           }
         }
+      }
+
+      Rectangle {
+        width: parent.width
+        height: 1
+        color: root.faint
+        anchors.bottom: parent.bottom
       }
     }
 
     // Main Downloads List
-    Rectangle {
+    Item {
       width: parent.width
-      height: parent.height - Style.space(42) - Style.gapsOut
-      radius: 0
-      color: Color.menu.background
-      border.color: Color.menu.border
-      border.width: 0
+      height: parent.height - Style.space(42) - Style.spacing.md
       clip: true
 
       ListView {
         id: downloadListView
         anchors.fill: parent
         anchors.margins: Style.gapsOut
-        spacing: Style.gapsOut / 2
+        spacing: 0
         model: root.displayedJobs
         boundsBehavior: Flickable.StopAtBounds
+        QQC.ScrollBar.vertical: QQC.ScrollBar {}
 
         delegate: DownloadRow {
           width: downloadListView.width
@@ -165,7 +183,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "\uf019"
             font.pixelSize: Style.space(40)
-            color: Color.muted
+            color: root.dim
           }
 
           Text {
@@ -174,7 +192,7 @@ Item {
               ? "No active downloads in progress."
               : "No download history found. Download videos or audio from the Discover tab!"
             font.pixelSize: Style.font.body
-            color: Color.muted
+            color: root.dim
           }
         }
       }

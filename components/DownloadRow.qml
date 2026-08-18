@@ -7,6 +7,11 @@ import "../services/DownloadModel.js" as DownloadModel
 Rectangle {
   id: root
 
+  property color foreground: Color.menu.text
+  property color accent: Color.accent
+  property color dim: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.56)
+  property color faint: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
+
   property var job: null
 
   signal cancelClicked(string jobId)
@@ -17,10 +22,8 @@ Rectangle {
   signal revealClicked(string path)
 
   height: Style.space(72)
-  color: rowHover.hovered ? Color.menu.selectedBackground : "transparent"
+  color: rowHover.hovered ? Style.hoverFillFor(root.foreground, root.accent) : "transparent"
   radius: 0
-  border.color: Color.menu.border
-  border.width: 0
 
   HoverHandler {
     id: rowHover
@@ -28,8 +31,8 @@ Rectangle {
 
   Row {
     anchors.fill: parent
-    anchors.margins: Style.gapsOut
-    spacing: Style.gapsOut
+    anchors.margins: Style.spacing.md
+    spacing: Style.spacing.md
 
     // Thumbnail
     Rectangle {
@@ -49,22 +52,23 @@ Rectangle {
 
     // Info Column
     Column {
-      width: parent.width - Style.space(80) - actionButtons.width - Style.gapsOut * 2
+      width: parent.width - Style.space(80) - actionButtons.width - Style.spacing.md * 2
       anchors.verticalCenter: parent.verticalCenter
       spacing: 2
 
       // Title & Format Badge
       Row {
         width: parent.width
-        spacing: Style.gapsOut
+        spacing: Style.spacing.sm
 
         Text {
           text: (root.job && root.job.title) || "Untitled"
+          textFormat: Text.PlainText
           font.pixelSize: Style.font.body
           font.bold: true
-          color: Color.menu.text
+          color: root.foreground
           elide: Text.ElideRight
-          width: Math.min(implicitWidth, parent.width - formatBadge.width - Style.gapsOut)
+          width: Math.min(implicitWidth, parent.width - formatBadge.width - Style.spacing.sm)
         }
 
         Rectangle {
@@ -72,7 +76,7 @@ Rectangle {
           height: Style.space(18)
           width: formatBadgeText.implicitWidth + Style.space(8)
           radius: 2
-          color: Color.accent
+          color: root.accent
           opacity: 0.15
           anchors.verticalCenter: parent.verticalCenter
 
@@ -80,24 +84,60 @@ Rectangle {
             id: formatBadgeText
             anchors.centerIn: parent
             text: (root.job && root.job.formatSummary) || "MP4"
+            textFormat: Text.PlainText
             font.pixelSize: Style.font.caption
             font.bold: true
-            color: Color.accent
+            color: root.accent
           }
         }
       }
 
       // Progress Bar or Status message
-      Item {
+      Column {
         width: parent.width
-        height: Style.space(16)
+        spacing: Style.spacing.xs
+
+        // Subtitle status line
+        Text {
+          text: {
+            if (!root.job) return ""
+            var badge = DownloadModel.getStatusBadge(root.job.state)
+            if (root.job.state === "downloading") {
+              return (root.job.percent > 0 ? root.job.percent.toFixed(1) + "% · " : "")
+                + DownloadModel.formatBytes(root.job.downloadedBytes)
+                + (root.job.totalBytes > 0 ? " / " + DownloadModel.formatBytes(root.job.totalBytes) : "")
+                + (root.job.speed > 0 ? " · " + DownloadModel.formatSpeed(root.job.speed) : "")
+                + (root.job.eta > 0 ? " · ETA: " + DownloadModel.formatEta(root.job.eta) : "")
+            } else if (root.job.state === "merging") {
+              return "Merging video and audio streams (ffmpeg)..."
+            } else if (root.job.state === "preparing") {
+              return "Preparing download..."
+            } else if (root.job.state === "completed") {
+              return "Completed · Saved to " + (root.job.outputPath || root.job.destination)
+            } else if (root.job.state === "failed") {
+              return "Failed: " + (root.job.error || "Unknown error")
+            } else if (root.job.state === "cancelled") {
+              return "Cancelled"
+            }
+            return badge.label
+          }
+          textFormat: Text.PlainText
+          font.pixelSize: Style.font.caption
+          color: {
+            if (!root.job) return root.dim
+            return root.job.state === "failed" ? "#ef4444" : (root.job.state === "completed" ? "#10b981" : root.dim)
+          }
+          elide: Text.ElideRight
+          width: parent.width
+        }
 
         // Progress Bar Track
         Rectangle {
           id: progressTrack
-          anchors.fill: parent
-          radius: height / 2
-          color: Color.menu.border
+          width: parent.width
+          height: 4
+          radius: 2
+          color: root.faint
           visible: root.job && (root.job.state === "downloading" || root.job.state === "merging" || root.job.state === "preparing")
 
           Rectangle {
@@ -105,46 +145,8 @@ Rectangle {
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             width: Math.max(height, parent.width * (Math.min(100, (root.job ? root.job.percent : 0)) / 100.0))
-            radius: height / 2
-            color: Color.accent
-          }
-        }
-
-        // Subtitle status line
-        Row {
-          anchors.fill: parent
-          spacing: Style.gapsOut
-
-          Text {
-            text: {
-              if (!root.job) return ""
-              var badge = DownloadModel.getStatusBadge(root.job.state)
-              if (root.job.state === "downloading") {
-                return (root.job.percent > 0 ? root.job.percent.toFixed(1) + "% · " : "")
-                  + DownloadModel.formatBytes(root.job.downloadedBytes)
-                  + (root.job.totalBytes > 0 ? " / " + DownloadModel.formatBytes(root.job.totalBytes) : "")
-                  + (root.job.speed > 0 ? " · " + DownloadModel.formatSpeed(root.job.speed) : "")
-                  + (root.job.eta > 0 ? " · ETA: " + DownloadModel.formatEta(root.job.eta) : "")
-              } else if (root.job.state === "merging") {
-                return "Merging video and audio streams (ffmpeg)..."
-              } else if (root.job.state === "preparing") {
-                return "Preparing download..."
-              } else if (root.job.state === "completed") {
-                return "Completed · Saved to " + (root.job.outputPath || root.job.destination)
-              } else if (root.job.state === "failed") {
-                return "Failed: " + (root.job.error || "Unknown error")
-              } else if (root.job.state === "cancelled") {
-                return "Cancelled"
-              }
-              return badge.label
-            }
-            font.pixelSize: Style.font.caption
-            color: {
-              if (!root.job) return Color.muted
-              return root.job.state === "failed" ? "#ef4444" : (root.job.state === "completed" ? "#10b981" : Color.muted)
-            }
-            elide: Text.ElideRight
-            width: parent.width
+            radius: 2
+            color: root.accent
           }
         }
       }
@@ -154,13 +156,15 @@ Rectangle {
     Row {
       id: actionButtons
       anchors.verticalCenter: parent.verticalCenter
-      spacing: Style.gapsOut / 2
+      spacing: Style.spacing.sm
 
       Button {
         visible: root.job && root.job.state === "downloading"
         iconText: "\uf04c"
         tooltipText: "Pause Download"
         onClicked: if (root.job) root.pauseClicked(root.job.jobId)
+        foreground: root.foreground
+        accent: root.accent
       }
 
       Button {
@@ -168,6 +172,8 @@ Rectangle {
         iconText: "\uf04b"
         tooltipText: "Resume Download"
         onClicked: if (root.job) root.resumeClicked(root.job.jobId)
+        foreground: root.foreground
+        accent: root.accent
       }
 
       Button {
@@ -175,6 +181,8 @@ Rectangle {
         iconText: "\uf00d"
         tooltipText: "Cancel Download"
         onClicked: if (root.job) root.cancelClicked(root.job.jobId)
+        foreground: root.foreground
+        accent: root.accent
       }
 
       Button {
@@ -182,6 +190,8 @@ Rectangle {
         iconText: "\uf01e"
         tooltipText: "Retry Download"
         onClicked: if (root.job) root.retryClicked(root.job.jobId)
+        foreground: root.foreground
+        accent: root.accent
       }
 
       Button {
@@ -189,6 +199,8 @@ Rectangle {
         iconText: "\uf07b"
         tooltipText: "Open in File Manager"
         onClicked: if (root.job) root.revealClicked(root.job.outputPath || root.job.destination)
+        foreground: root.foreground
+        accent: root.accent
       }
 
       Button {
@@ -196,7 +208,16 @@ Rectangle {
         iconText: "\uf1f8"
         tooltipText: "Remove from History"
         onClicked: if (root.job) root.removeClicked(root.job.jobId)
+        foreground: root.foreground
+        accent: root.accent
       }
     }
+  }
+
+  Rectangle {
+    width: parent.width
+    height: 1
+    color: root.faint
+    anchors.bottom: parent.bottom
   }
 }

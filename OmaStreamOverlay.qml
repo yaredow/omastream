@@ -265,6 +265,14 @@ Item {
             id: fullscreenVideoOutput
             anchors.fill: parent
             fillMode: VideoOutput.PreserveAspectFit
+
+            MouseArea {
+              anchors.fill: parent
+              onClicked: {
+                if (root.service) root.service.togglePlayback()
+                parent.forceActiveFocus()
+              }
+            }
           }
 
           Rectangle {
@@ -339,14 +347,18 @@ Item {
             anchors.bottom: parent.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-            height: Style.space(80)
+            height: Style.space(88)
             color: "#cc000000"
             visible: root.controlsVisible
 
             Column {
-              anchors.fill: parent
-              anchors.margins: Style.gapsOut
-              spacing: Style.gapsOut / 2
+              anchors.bottom: parent.bottom
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.leftMargin: Style.spacing.panelPadding
+              anchors.rightMargin: Style.spacing.panelPadding
+              anchors.bottomMargin: Style.spacing.md
+              spacing: Style.spacing.lg
 
               // Scrubber & Time Bar
               Row {
@@ -495,6 +507,13 @@ Item {
                         }
                       }
                     }
+
+                    Text {
+                      text: (root.service ? Math.round(root.service.volume) : 70) + "%"
+                      font.pixelSize: Style.font.body
+                      color: "#cccccc"
+                      anchors.verticalCenter: parent.verticalCenter
+                    }
                   }
                 }
               }
@@ -502,154 +521,155 @@ Item {
           }
         }
 
-        // Normal Card Content (Header Tabs, Active View, Mini Player)
-        Column {
-          anchors.fill: parent
-          anchors.margins: Style.spacing.panelPadding
-          spacing: Style.spacing.md
+        // Top Header & Mode Navigation Bar
+        Item {
+          id: topHeader
+          anchors.top: parent.top
+          anchors.left: parent.left
+          anchors.right: parent.right
+          height: Style.space(64)
           visible: !root.fullscreen
 
-          // Top Header & Mode Navigation Bar
-          Item {
-            width: parent.width
-            height: Style.space(48)
+          Row {
+            anchors.left: parent.left
+            anchors.leftMargin: Style.spacing.panelPadding
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.spacing.md
 
+            // App Brand Title
             Row {
-              anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
-              spacing: Style.spacing.md
+              spacing: Style.spacing.sm
 
-              // App Brand Title
-              Row {
+              Text {
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.spacing.sm
-
-                Text {
-                  text: "\uf03d"
-                  font.pixelSize: Style.font.title
-                  color: root.accent
-                  textFormat: Text.PlainText
-                }
-
-                Text {
-                  text: "omaStream"
-                  font.pixelSize: Style.font.title
-                  font.bold: true
-                  color: root.foreground
-                  textFormat: Text.PlainText
-                }
+                text: "\uf03d"
+                font.pixelSize: Style.font.title
+                color: root.accent
+                textFormat: Text.PlainText
               }
 
-              Item { width: Style.spacing.lg; height: 1 }
-
-              // Navigation Tabs
-              Row {
+              Text {
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.spacing.xs
-
-                Button {
-                  text: "Discover"
-                  iconText: "\uf002"
-                  selected: root.currentMode === "discover"
-                  active: root.currentMode === "discover"
-                  foreground: root.foreground
-                  accent: root.accent
-                  fontSize: Style.font.caption
-                  onClicked: root.currentMode = "discover"
-                }
-
-                Button {
-                  text: "Downloads" + (root.activeDownloadCount > 0 ? " (" + root.activeDownloadCount + ")" : "")
-                  iconText: "\uf019"
-                  selected: root.currentMode === "downloads"
-                  active: root.currentMode === "downloads"
-                  foreground: root.foreground
-                  accent: root.accent
-                  fontSize: Style.font.caption
-                  onClicked: root.currentMode = "downloads"
-                }
+                text: "omaStream"
+                font.pixelSize: Style.font.title
+                font.bold: true
+                color: root.foreground
+                textFormat: Text.PlainText
               }
             }
 
-            // Close button anchored right
-            Button {
-              anchors.right: parent.right
-              anchors.rightMargin: Style.spacing.md
-              anchors.verticalCenter: parent.verticalCenter
-              iconText: "\uf00d"
-              tooltipText: "Close (Esc)"
-              foreground: root.foreground
-              accent: root.accent
-              onClicked: root.dismiss()
-            }
+            Item { width: Style.spacing.lg; height: 1 }
 
-            // Header bottom separator
-            Rectangle {
-              anchors.bottom: parent.bottom
-              anchors.left: parent.left
-              anchors.right: parent.right
-              height: 1
-              color: root.faint
+            // Navigation Tabs
+            Row {
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.spacing.xs
+
+              Button {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Discover"
+                iconText: "\uf002"
+                selected: root.currentMode === "discover"
+                active: root.currentMode === "discover"
+                foreground: root.foreground
+                accent: root.accent
+                fontSize: Style.font.caption
+                onClicked: root.currentMode = "discover"
+              }
+
+              Button {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Downloads" + (root.activeDownloadCount > 0 ? " (" + root.activeDownloadCount + ")" : "")
+                iconText: "\uf019"
+                selected: root.currentMode === "downloads"
+                active: root.currentMode === "downloads"
+                foreground: root.foreground
+                accent: root.accent
+                fontSize: Style.font.caption
+                onClicked: root.currentMode = "downloads"
+              }
             }
           }
 
-          // Active View Container
-          Item {
-            width: parent.width
-            height: parent.height - Style.space(48) - Style.spacing.md
+          // Close button anchored right
+          Button {
+            anchors.right: parent.right
+            anchors.rightMargin: Style.spacing.panelPadding
+            anchors.verticalCenter: parent.verticalCenter
+            iconText: "\uf00d"
+            tooltipText: "Close (Esc)"
+            foreground: root.foreground
+            accent: root.accent
+            onClicked: root.dismiss()
+          }
 
-            DiscoverView {
-              id: discoverView
-              anchors.fill: parent
-              visible: root.currentMode === "discover"
-              service: root.service
-              rawVideoList: root.rawVideoList
-              isSearching: root.isSearching
-              errorMessage: root.errorMessage
-              currentQuery: root.currentQuery
-              playerService: root.service
-              playerActive: root.playerActive
+          // Header bottom separator
+          Rectangle {
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 1
+            color: root.faint
+          }
+        }
 
-              onSearchTriggered: function(q) {
-                root.performSearch(q)
-              }
+        // Active View Container
+        Item {
+          anchors.top: topHeader.bottom
+          anchors.bottom: parent.bottom
+          anchors.left: parent.left
+          anchors.right: parent.right
+          visible: !root.fullscreen
 
-              onPlayRequested: function(item, opts) {
-                root.playMedia(item, opts)
-              }
+          DiscoverView {
+            id: discoverView
+            anchors.fill: parent
+            visible: root.currentMode === "discover"
+            service: root.service
+            rawVideoList: root.rawVideoList
+            isSearching: root.isSearching
+            errorMessage: root.errorMessage
+            currentQuery: root.currentQuery
+            playerService: root.service
+            playerActive: root.playerActive
 
-              onQuickDownloadRequested: function(item) {
-                root.quickDownload(item)
-              }
-
-              onCustomDownloadRequested: function(item) {
-                root.openCustomDownload(item)
-              }
-
-              onFullscreenRequested: root.setFullscreen(true)
-
-              onQualityChanged: function(formatItem) {
-                if (root.service && root.service.currentItem) {
-                  root.service.playMedia(root.service.currentItem, {
-                    mode: root.service.mode,
-                    formatId: formatItem.id,
-                    formatLabel: formatItem.label
-                  })
-                }
-              }
+            onSearchTriggered: function(q) {
+              root.performSearch(q)
             }
 
+            onPlayRequested: function(item, opts) {
+              root.playMedia(item, opts)
+            }
 
+            onQuickDownloadRequested: function(item) {
+              root.quickDownload(item)
+            }
 
-            DownloadsView {
-              id: downloadsView
-              anchors.fill: parent
-              visible: root.currentMode === "downloads"
-              downloadService: root.service ? root.service.downloads : null
+            onCustomDownloadRequested: function(item) {
+              root.openCustomDownload(item)
+            }
+
+            onFullscreenRequested: root.setFullscreen(true)
+
+            onQualityChanged: function(formatItem) {
+              if (root.service && root.service.currentItem) {
+                root.service.playMedia(root.service.currentItem, {
+                  mode: root.service.mode,
+                  formatId: formatItem.id,
+                  formatLabel: formatItem.label
+                })
+              }
             }
           }
 
-
+          DownloadsView {
+            id: downloadsView
+            anchors.fill: parent
+            anchors.margins: Style.spacing.panelPadding
+            visible: root.currentMode === "downloads"
+            downloadService: root.service ? root.service.downloads : null
+          }
         }
       }
     }

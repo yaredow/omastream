@@ -199,9 +199,15 @@ Item {
             MouseArea {
               anchors.fill: parent
               cursorShape: Qt.PointingHandCursor
+              onPositionChanged: function(mouse) {
+                if (!root.service || !root.service.duration || !pressed) return
+                var ratio = Math.max(0, Math.min(1, mouse.x / width))
+                var targetMs = ratio * root.service.duration
+                root.service.seek(targetMs)
+              }
               onClicked: function(mouse) {
                 if (!root.service || !root.service.duration) return
-                var ratio = mouse.x / width
+                var ratio = Math.max(0, Math.min(1, mouse.x / width))
                 var targetMs = ratio * root.service.duration
                 root.service.seek(targetMs)
               }
@@ -304,9 +310,14 @@ Item {
                 MouseArea {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
+                  onPositionChanged: function(mouse) {
+                    if (!root.service || !pressed) return
+                    var vol = Math.max(0, Math.min(100, Math.round((mouse.x / width) * 100)))
+                    root.service.setVolume(vol)
+                  }
                   onClicked: function(mouse) {
                     if (!root.service) return
-                    var vol = Math.round((mouse.x / width) * 100)
+                    var vol = Math.max(0, Math.min(100, Math.round((mouse.x / width) * 100)))
                     root.service.setVolume(vol)
                   }
                 }
