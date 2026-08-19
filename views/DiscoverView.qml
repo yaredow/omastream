@@ -149,44 +149,37 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: Style.spacing.md
 
-        // Search Input Container
-        Item {
+        // Search Input
+        TextField {
+          id: searchInput
           anchors.verticalCenter: parent.verticalCenter
-          width: Math.min(Style.space(340), root.width * 0.5)
-          height: searchInput.implicitHeight
-
-          TextField {
-            id: searchInput
-            anchors.fill: parent
-            placeholderText: "Search or paste a URL (YouTube, X, Twitch...)"
-            maximumLength: 256
-            foreground: root.foreground
-            accent: root.accent
-            onAccepted: if (text.trim()) root.searchTriggered(text.trim())
-            onTextEdited: {
-              if (!String(text || "").trim() && root.rawVideoList.length > 0) {
-                root.clearSearch()
-              }
-            }
-            Keys.onPressed: function(event) {
-              if (event.key === Qt.Key_Escape && (text.length > 0 || root.rawVideoList.length > 0)) {
-                root.clearSearch()
-                event.accepted = true
-              }
+          width: Math.min(Style.space(320), root.width * 0.45)
+          placeholderText: "Search or paste a URL (YouTube, X, Twitch...)"
+          maximumLength: 256
+          foreground: root.foreground
+          accent: root.accent
+          onAccepted: {
+            var q = String(text || "").trim()
+            if (q.length > 0) {
+              root.searchTriggered(q)
             }
           }
-
-          Button {
-            anchors.right: parent.right
-            anchors.rightMargin: Style.spacing.xs
-            anchors.verticalCenter: parent.verticalCenter
-            visible: String(searchInput.text || "").length > 0 || root.rawVideoList.length > 0
-            iconText: "\uf00d"
-            tooltipText: "Clear search (Esc)"
-            foreground: root.dim
-            accent: root.accent
-            onClicked: root.clearSearch()
+          onTextEdited: {
+            if (!String(text || "").trim() && root.rawVideoList.length > 0) {
+              root.clearSearch()
+            }
           }
+        }
+
+        // Clear Search Button
+        Button {
+          anchors.verticalCenter: parent.verticalCenter
+          visible: String(searchInput.text || "").length > 0 || root.rawVideoList.length > 0
+          iconText: "\uf00d"
+          tooltipText: "Clear search"
+          foreground: root.foreground
+          accent: root.accent
+          onClicked: root.clearSearch()
         }
 
         // Filter & Sort Button
