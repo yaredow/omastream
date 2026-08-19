@@ -67,12 +67,6 @@ Item {
 
   function clearSearch() {
     searchInput.text = ""
-    root.rawVideoList = []
-    root.filteredVideoList = []
-    root.selectedVideo = null
-    root.selectedIndex = -1
-    root.errorMessage = ""
-    root.isSearching = false
     root.clearSearchRequested()
   }
 
@@ -127,8 +121,9 @@ Item {
 
     // Minimalist Top Bar
     Item {
+      id: topBar
       width: parent.width
-      height: Style.space(42)
+      height: Style.space(56)
 
       // Results Count
       Text {
@@ -147,13 +142,13 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: Style.spacing.panelPadding
         anchors.verticalCenter: parent.verticalCenter
-        spacing: Style.spacing.md
+        spacing: Style.spacing.sm
 
         // Search Input
         TextField {
           id: searchInput
           anchors.verticalCenter: parent.verticalCenter
-          width: Math.min(Style.space(320), root.width * 0.45)
+          width: Math.min(Style.space(340), root.width * 0.48)
           placeholderText: "Search or paste a URL (YouTube, X, Twitch...)"
           maximumLength: 256
           foreground: root.foreground
@@ -169,17 +164,20 @@ Item {
               root.clearSearch()
             }
           }
-        }
 
-        // Clear Search Button
-        Button {
-          anchors.verticalCenter: parent.verticalCenter
-          visible: String(searchInput.text || "").length > 0 || root.rawVideoList.length > 0
-          iconText: "\uf00d"
-          tooltipText: "Clear search"
-          foreground: root.foreground
-          accent: root.accent
-          onClicked: root.clearSearch()
+          // Clear Button INSIDE search field
+          Button {
+            anchors.right: parent.right
+            anchors.rightMargin: Style.spacing.xs
+            anchors.verticalCenter: parent.verticalCenter
+            visible: String(searchInput.text || "").length > 0 || (root.rawVideoList && root.rawVideoList.length > 0)
+            iconText: "\uf00d"
+            tooltipText: "Clear search"
+            fontSize: Style.font.caption
+            foreground: root.dim
+            accent: root.accent
+            onClicked: root.clearSearch()
+          }
         }
 
         // Filter & Sort Button
@@ -441,7 +439,7 @@ Item {
     // Main Split View
     Row {
       width: parent.width
-      height: parent.height - (Style.space(42) + Style.spacing.md)
+      height: parent.height - (topBar.height + Style.spacing.md)
       spacing: 0
 
       // Left Column: Results List

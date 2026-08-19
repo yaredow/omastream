@@ -129,6 +129,7 @@ Item {
 
   function clearSearch() {
     if (searchProcess.running) searchProcess.running = false
+    root.searchSerial += 1
     root.currentQuery = ""
     root.rawVideoList = []
     root.errorMessage = ""
