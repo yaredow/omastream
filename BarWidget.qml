@@ -26,7 +26,7 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "\uf03d"
+    text: "\uf144"
     active: root.playerRunning && !root.playerPaused
     tooltipText: root.playerRunning
       ? (root.playerPaused ? "Paused: " : "Playing: ") + root.playerTitle

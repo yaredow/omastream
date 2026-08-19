@@ -43,4 +43,8 @@ if [ -n "$BROWSER" ]; then
     args+=(--cookies-from-browser "$BROWSER")
 fi
 
-"${args[@]}" "ytsearch${LIMIT}:${QUERY}" 2>/dev/null | jq -s '.'
+if [[ "$QUERY" == http://* ]] || [[ "$QUERY" == https://* ]]; then
+    "${args[@]}" "$QUERY" 2>/dev/null | jq -s '.'
+else
+    "${args[@]}" "ytsearch${LIMIT}:${QUERY}" 2>/dev/null | jq -s '.'
+fi

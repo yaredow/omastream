@@ -106,7 +106,7 @@ Item {
     formatRequestSerial += 1
     formatProcess.targetId = item.id
     formatProcess.targetSerial = formatRequestSerial
-    formatProcess.command = [root.formatsScriptPath, item.id]
+    formatProcess.command = [root.formatsScriptPath, item.originalUrl]
     formatProcess.running = true
   }
 
@@ -133,7 +133,7 @@ Item {
           : "youtube:player_client=android,mweb",
         "-g",
         "-f", format,
-        "https://www.youtube.com/watch?v=" + request.item.id
+        request.item.originalUrl
       ]
       resolveProcess.running = true
       return
@@ -236,6 +236,11 @@ Item {
     }
     onPlaybackStateChanged: {
       if (playbackState === MediaPlayer.PlayingState) root.requestLoading = false
+    }
+    onAudioTracksChanged: {
+      if (player.audioTracks.length > 0 && player.activeAudioTrack === -1) {
+        player.activeAudioTrack = 0
+      }
     }
     onErrorOccurred: function(error, errorString) {
       root.playerError = errorString || "Media playback failed."

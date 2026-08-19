@@ -59,6 +59,7 @@ function parseSearchResults(data) {
         results.push({
             id: String(item.id),
             videoId: String(item.id),
+            originalUrl: item.webpage_url || item.url || ("https://www.youtube.com/watch?v=" + item.id),
             sourceType: "youtube",
             mediaType: isLive ? "live" : "video",
             title: item.title || "Untitled Video",

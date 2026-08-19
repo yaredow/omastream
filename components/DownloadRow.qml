@@ -76,8 +76,7 @@ Rectangle {
           height: Style.space(18)
           width: formatBadgeText.implicitWidth + Style.space(8)
           radius: 2
-          color: root.accent
-          opacity: 0.15
+          color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.15)
           anchors.verticalCenter: parent.verticalCenter
 
           Text {

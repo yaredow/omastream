@@ -20,7 +20,7 @@ Item {
   property bool opened: false
 
   property string currentMode: "discover" // "discover", "downloads"
-  property var customDownloadTarget: null
+
 
   // Search state
   property var rawVideoList: []
@@ -154,11 +154,6 @@ Item {
       qualityLabel: "Best Available",
       destination: "~/Downloads"
     })
-  }
-
-  function openCustomDownload(item) {
-    root.customDownloadTarget = item
-    customDownloadModal.open()
   }
 
   Process {
@@ -422,45 +417,53 @@ Item {
                 spacing: Style.gapsOut
 
                 Row {
-                  spacing: Style.gapsOut / 2
+                  spacing: Style.spacing.sm
                   anchors.verticalCenter: parent.verticalCenter
 
                   Button {
                     iconText: "\uf04a"
                     tooltipText: "Seek -10s"
+                    foreground: root.foreground
+                    accent: root.accent
                     onClicked: if (root.service) root.service.seekRelative(-10000)
                   }
 
                   Button {
                     iconText: (root.service && root.service.running && !root.service.paused) ? "\uf04c" : "\uf04b"
-                    selected: true
-                    active: true
                     tooltipText: (root.service && root.service.running && !root.service.paused) ? "Pause" : "Play"
+                    foreground: root.foreground
+                    accent: root.accent
                     onClicked: if (root.service) root.service.togglePlayback()
                   }
 
                   Button {
                     iconText: "\uf04e"
                     tooltipText: "Seek +10s"
+                    foreground: root.foreground
+                    accent: root.accent
                     onClicked: if (root.service) root.service.seekRelative(10000)
                   }
 
                   Button {
                     iconText: "\uf04d"
                     tooltipText: "Stop"
+                    foreground: root.foreground
+                    accent: root.accent
                     onClicked: if (root.service) root.service.stop()
                   }
                 }
 
-                Item { width: Style.space(16); height: 1 }
+                Item { width: Style.spacing.md; height: 1 }
 
                 Row {
-                  spacing: Style.gapsOut
+                  spacing: Style.spacing.sm
                   anchors.verticalCenter: parent.verticalCenter
 
                   Button {
                     text: ((root.service ? root.service.playbackRate : 1.0) + "x")
                     tooltipText: "Cycle Speed"
+                    foreground: root.foreground
+                    accent: root.accent
                     onClicked: {
                       if (!root.service) return
                       var r = root.service.playbackRate
@@ -473,19 +476,21 @@ Item {
                   }
 
                   Row {
-                    spacing: Style.gapsOut / 2
+                    spacing: Style.spacing.sm
                     anchors.verticalCenter: parent.verticalCenter
 
                     Button {
                       iconText: (root.service && root.service.muted) ? "\uf6a9" : "\uf028"
+                      foreground: root.foreground
+                      accent: root.accent
                       onClicked: if (root.service) root.service.toggleMute()
                     }
 
                     Rectangle {
                       width: Style.space(100)
-                      height: Style.space(8)
+                      height: Style.space(6)
                       radius: height / 2
-                      color: "#44ffffff"
+                      color: root.faint
                       anchors.verticalCenter: parent.verticalCenter
 
                       Rectangle {
@@ -543,15 +548,7 @@ Item {
 
               Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "\uf03d"
-                font.pixelSize: Style.font.title
-                color: root.accent
-                textFormat: Text.PlainText
-              }
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "omaStream"
+                text: "OMASTREAM"
                 font.pixelSize: Style.font.title
                 font.bold: true
                 color: root.foreground
@@ -567,11 +564,8 @@ Item {
               spacing: Style.spacing.xs
 
               Button {
-                anchors.verticalCenter: parent.verticalCenter
                 text: "Discover"
-                iconText: "\uf002"
                 selected: root.currentMode === "discover"
-                active: root.currentMode === "discover"
                 foreground: root.foreground
                 accent: root.accent
                 fontSize: Style.font.caption
@@ -579,11 +573,8 @@ Item {
               }
 
               Button {
-                anchors.verticalCenter: parent.verticalCenter
                 text: "Downloads" + (root.activeDownloadCount > 0 ? " (" + root.activeDownloadCount + ")" : "")
-                iconText: "\uf019"
                 selected: root.currentMode === "downloads"
-                active: root.currentMode === "downloads"
                 foreground: root.foreground
                 accent: root.accent
                 fontSize: Style.font.caption
@@ -671,18 +662,6 @@ Item {
             downloadService: root.service ? root.service.downloads : null
           }
         }
-      }
-    }
-  }
-
-  // Custom Download Modal Sheet
-  CustomDownloadModal {
-    id: customDownloadModal
-    mediaItem: root.customDownloadTarget
-    formats: root.service ? root.service.currentFormats : ({})
-    onDownloadRequested: function(opts) {
-      if (root.service && root.service.downloads && root.customDownloadTarget) {
-        root.service.downloads.startDownload(root.customDownloadTarget, opts)
       }
     }
   }

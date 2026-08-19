@@ -19,8 +19,8 @@ Item {
   property string errorMessage: ""
   property string currentQuery: ""
 
-  property string activeSort: "relevance" // relevance, newest, oldest, views, shortest, longest
-  property string activeFilter: "all" // all, videos, live, short, medium, long
+  property string activeSort: "relevance" 
+  property string activeFilter: "all" 
   property string activeSource: "youtube"
   property bool controlsVisible: true
 
@@ -54,6 +54,7 @@ Item {
   property color faint: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
   property var playerService: null
   property bool playerActive: false
+  readonly property bool isCurrentVideoPlaying: root.playerActive && root.playerService && root.playerService.currentItem && root.selectedVideo && root.playerService.currentItem.id === root.selectedVideo.id
   property alias playerVideoOutput: embeddedVideoOutput
 
   signal playRequested(var item, var options)
@@ -141,7 +142,7 @@ Item {
           id: searchInput
           anchors.verticalCenter: parent.verticalCenter
           width: Math.min(Style.space(340), root.width * 0.5)
-          placeholderText: "Search YouTube videos..."
+          placeholderText: "Search or paste a URL (YouTube, X, Twitch...)"
           maximumLength: 256
           foreground: root.foreground
           accent: root.accent
@@ -394,19 +395,20 @@ Item {
           }
         }
       }
-    }
 
-    // Top separator
-    Rectangle {
-      width: parent.width
-      height: 1
-      color: root.faint
+      // Bottom separator for Top Bar
+      Rectangle {
+        anchors.bottom: parent.bottom
+        width: parent.width
+        height: 1
+        color: root.faint
+      }
     }
 
     // Main Split View
     Row {
       width: parent.width
-      height: parent.height - (Style.space(42) + 1 + Style.spacing.md * 2)
+      height: parent.height - (Style.space(42) + Style.spacing.md)
       spacing: 0
 
       // Left Column: Results List
@@ -636,12 +638,12 @@ Item {
               id: embeddedVideoOutput
               anchors.fill: parent
               fillMode: VideoOutput.PreserveAspectFit
-              visible: root.playerActive && root.playerService && root.playerService.mode === "video"
+              visible: root.isCurrentVideoPlaying && root.playerService.mode === "video"
             }
 
             MouseArea {
               anchors.fill: parent
-              visible: root.playerActive
+              visible: root.isCurrentVideoPlaying
               onClicked: {
                 if (root.playerService) root.playerService.togglePlayback()
                 parent.forceActiveFocus()
@@ -651,7 +653,7 @@ Item {
             // Audio Mode Visualization (when playing audio)
             Item {
               anchors.fill: parent
-              visible: root.playerActive && root.playerService && root.playerService.mode === "audio"
+              visible: root.isCurrentVideoPlaying && root.playerService.mode === "audio"
 
               Image {
                 anchors.centerIn: parent
@@ -668,7 +670,7 @@ Item {
               source: (root.selectedVideo && root.selectedVideo.artworkUrl) || ""
               fillMode: Image.PreserveAspectFit
               asynchronous: true
-              visible: !root.playerActive
+              visible: !root.isCurrentVideoPlaying
             }
 
             // Buffering Indicator
@@ -679,7 +681,7 @@ Item {
               height: Style.space(52)
               radius: height / 2
               color: "#cc000000"
-              visible: root.playerActive && root.playerService && (root.playerService.resolving || root.playerService.buffering)
+              visible: root.isCurrentVideoPlaying && (root.playerService.resolving || root.playerService.buffering)
 
               Text {
                 anchors.centerIn: parent
@@ -706,7 +708,7 @@ Item {
               height: Style.space(52)
               radius: height / 2
               color: playHover.hovered ? Color.accent : "#88000000"
-              visible: !root.playerActive && root.selectedVideo !== null
+              visible: !root.isCurrentVideoPlaying && root.selectedVideo !== null
 
               HoverHandler {
                 id: playHover
@@ -733,13 +735,13 @@ Item {
               anchors.right: parent.right
               height: Style.space(40)
               color: "#99000000"
-              visible: root.playerActive && root.controlsVisible
+              visible: root.isCurrentVideoPlaying && root.controlsVisible
 
               Row {
                 anchors.fill: parent
                 anchors.leftMargin: Style.spacing.md
                 anchors.rightMargin: Style.spacing.md
-                spacing: Style.spacing.md
+                spacing: Style.spacing.sm
 
                 Text {
                   width: parent.width - playerTopActions.width - Style.spacing.md
@@ -766,21 +768,21 @@ Item {
 
                   Button {
                     iconText: "\uf065"
-                    tooltipText: "Fullscreen"
+                    tooltipText: "Fullscreen (f)"
                     onClicked: root.fullscreenRequested()
                   }
                 }
               }
             }
 
-            // Bottom Transport Controls Overlay (when playing)
+            // Bottom Overlay Footer (when playing)
             Rectangle {
               anchors.bottom: parent.bottom
               anchors.left: parent.left
               anchors.right: parent.right
               height: Style.space(88)
               color: "#cc000000"
-              visible: root.playerActive && root.controlsVisible
+              visible: root.isCurrentVideoPlaying && root.controlsVisible
 
               Column {
                 anchors.bottom: parent.bottom
@@ -859,26 +861,33 @@ Item {
                     Button {
                       iconText: "\uf04a"
                       tooltipText: "Seek -10s"
+                      foreground: root.foreground
+                      accent: root.accent
                       onClicked: if (root.playerService) root.playerService.seekRelative(-10000)
                     }
 
                     Button {
                       iconText: (root.playerService && root.playerService.running && !root.playerService.paused) ? "\uf04c" : "\uf04b"
                       selected: true
-                      active: true
                       tooltipText: (root.playerService && root.playerService.running && !root.playerService.paused) ? "Pause" : "Play"
+                      foreground: root.foreground
+                      accent: root.accent
                       onClicked: if (root.playerService) root.playerService.togglePlayback()
                     }
 
                     Button {
                       iconText: "\uf04e"
                       tooltipText: "Seek +10s"
+                      foreground: root.foreground
+                      accent: root.accent
                       onClicked: if (root.playerService) root.playerService.seekRelative(10000)
                     }
 
                     Button {
                       iconText: "\uf04d"
                       tooltipText: "Stop"
+                      foreground: root.foreground
+                      accent: root.accent
                       onClicked: if (root.playerService) root.playerService.stop()
                     }
                   }
@@ -892,6 +901,8 @@ Item {
                     Button {
                       text: ((root.playerService ? root.playerService.playbackRate : 1.0) + "x")
                       tooltipText: "Cycle Speed"
+                      foreground: root.foreground
+                      accent: root.accent
                       onClicked: {
                         if (!root.playerService) return
                         var r = root.playerService.playbackRate
@@ -909,6 +920,8 @@ Item {
 
                       Button {
                         iconText: (root.playerService && root.playerService.muted) ? "\uf6a9" : "\uf028"
+                        foreground: root.foreground
+                        accent: root.accent
                         onClicked: if (root.playerService) root.playerService.toggleMute()
                       }
 
@@ -916,7 +929,7 @@ Item {
                         width: Style.space(60)
                         height: Style.space(6)
                         radius: height / 2
-                        color: "#44ffffff"
+                        color: root.faint
                         anchors.verticalCenter: parent.verticalCenter
 
                         Rectangle {
@@ -925,7 +938,7 @@ Item {
                           anchors.bottom: parent.bottom
                           width: Math.max(height, parent.width * ((root.playerService ? root.playerService.volume : 70) / 100.0))
                           radius: height / 2
-                          color: Color.accent
+                          color: root.accent
                         }
 
                         MouseArea {
@@ -1018,8 +1031,6 @@ Item {
               text: "Audio Mode"
               iconText: "\uf028"
               tooltipText: "Play in Audio-only stream mode"
-              selected: true
-              active: true
               foreground: root.foreground
               accent: root.accent
               onClicked: root.playRequested(root.selectedVideo, { mode: "audio" })
@@ -1047,9 +1058,10 @@ Item {
 
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
-              text: "\uf03d"
+              text: "\uf144"
               font.pixelSize: Style.space(40)
               color: root.dim
+              textFormat: Text.PlainText
             }
 
             Text {
@@ -1057,6 +1069,7 @@ Item {
               text: "Select a video from the list to preview and play."
               font.pixelSize: Style.font.body
               color: root.dim
+              textFormat: Text.PlainText
             }
           }
         }

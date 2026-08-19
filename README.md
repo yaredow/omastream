@@ -49,7 +49,7 @@ views/
 components/
   QualityMenu.qml           # Stream quality selection menu
   DownloadRow.qml           # Transfer progress bar, speed, ETA, and actions
-  CustomDownloadModal.qml   # Resolution, container, and audio extraction modal
+
 scripts/
   omastream-search          # Bounded yt-dlp JSON search adapter
   omastream-formats         # Machine-readable format extractor
@@ -70,5 +70,5 @@ qmllint -I "$OMARCHY_PATH/shell" \
   views/DownloadsView.qml \
   components/QualityMenu.qml \
   components/DownloadRow.qml \
-  components/CustomDownloadModal.qml
+
 ```

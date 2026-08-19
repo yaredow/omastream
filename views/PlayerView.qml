@@ -15,6 +15,11 @@ Item {
   signal fullscreenRequested()
   signal qualityChanged(var formatItem)
 
+  property color foreground: Color.menu.text
+  property color accent: Color.accent
+  property color dim: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.56)
+  property color faint: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
+
   function formatTime(milliseconds) {
     var total = Math.max(0, Math.floor(milliseconds / 1000))
     var hours = Math.floor(total / 3600)
@@ -231,46 +236,54 @@ Item {
 
           // Left transport controls
           Row {
-            spacing: Style.gapsOut / 2
+            spacing: Style.spacing.sm
             anchors.verticalCenter: parent.verticalCenter
 
             Button {
               iconText: "\uf04a"
               tooltipText: "Seek -10s"
+              foreground: root.foreground
+              accent: root.accent
               onClicked: if (root.service) root.service.seekRelative(-10000)
             }
 
             Button {
               iconText: (root.service && root.service.running && !root.service.paused) ? "\uf04c" : "\uf04b"
-              selected: true
-              active: true
               tooltipText: (root.service && root.service.running && !root.service.paused) ? "Pause" : "Play"
+              foreground: root.foreground
+              accent: root.accent
               onClicked: if (root.service) root.service.togglePlayback()
             }
 
             Button {
               iconText: "\uf04e"
               tooltipText: "Seek +10s"
+              foreground: root.foreground
+              accent: root.accent
               onClicked: if (root.service) root.service.seekRelative(10000)
             }
 
             Button {
               iconText: "\uf04d"
               tooltipText: "Stop"
+              foreground: root.foreground
+              accent: root.accent
               onClicked: if (root.service) root.service.stop()
             }
           }
 
-          Item { width: Style.space(20); height: 1 }
+          Item { width: Style.spacing.md; height: 1 }
 
           // Right volume & speed controls
           Row {
-            spacing: Style.gapsOut
+            spacing: Style.spacing.sm
             anchors.verticalCenter: parent.verticalCenter
 
             Button {
               text: ((root.service ? root.service.playbackRate : 1.0) + "x")
               tooltipText: "Cycle Playback Speed"
+              foreground: root.foreground
+              accent: root.accent
               onClicked: {
                 if (!root.service) return
                 var r = root.service.playbackRate
@@ -283,11 +296,13 @@ Item {
             }
 
             Row {
-              spacing: Style.gapsOut / 2
+              spacing: Style.spacing.sm
               anchors.verticalCenter: parent.verticalCenter
 
               Button {
                 iconText: (root.service && root.service.muted) ? "\uf6a9" : "\uf028"
+                foreground: root.foreground
+                accent: root.accent
                 onClicked: if (root.service) root.service.toggleMute()
               }
 
@@ -295,7 +310,7 @@ Item {
                 width: Style.space(80)
                 height: Style.space(6)
                 radius: height / 2
-                color: Color.menu.border
+                color: root.faint
                 anchors.verticalCenter: parent.verticalCenter
 
                 Rectangle {
@@ -304,7 +319,7 @@ Item {
                   anchors.bottom: parent.bottom
                   width: Math.max(height, parent.width * ((root.service ? root.service.volume : 70) / 100.0))
                   radius: height / 2
-                  color: Color.accent
+                  color: root.accent
                 }
 
                 MouseArea {

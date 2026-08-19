@@ -51,68 +51,70 @@ Item {
         // Filter Tabs
         Row {
           anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.gapsOut / 2
+          spacing: Style.spacing.xs
 
           Button {
             text: "All"
             selected: root.filterState === "all"
-            active: root.filterState === "all"
-            onClicked: root.filterState = "all"
+            fontSize: Style.font.caption
             foreground: root.foreground
             accent: root.accent
+            onClicked: root.filterState = "all"
           }
 
           Button {
             text: "Active" + (root.downloadService && root.downloadService.activeCount > 0 ? " (" + root.downloadService.activeCount + ")" : "")
             selected: root.filterState === "active"
-            active: root.filterState === "active"
-            onClicked: root.filterState = "active"
+            fontSize: Style.font.caption
             foreground: root.foreground
             accent: root.accent
+            onClicked: root.filterState = "active"
           }
 
           Button {
             text: "Completed"
             selected: root.filterState === "completed"
-            active: root.filterState === "completed"
-            onClicked: root.filterState = "completed"
+            fontSize: Style.font.caption
             foreground: root.foreground
             accent: root.accent
+            onClicked: root.filterState = "completed"
           }
 
           Button {
             text: "Failed"
             selected: root.filterState === "failed"
-            active: root.filterState === "failed"
-            onClicked: root.filterState = "failed"
+            fontSize: Style.font.caption
             foreground: root.foreground
             accent: root.accent
+            onClicked: root.filterState = "failed"
           }
         }
 
-        Item { width: Style.space(16); height: 1 }
+        Item { width: Style.spacing.md; height: 1 }
 
         // Right action buttons
         Row {
           anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.gapsOut / 2
+          spacing: Style.spacing.xs
 
           Button {
             text: "Open Folder"
             iconText: "\uf07b"
+            fontSize: Style.font.caption
             tooltipText: "Open ~/Downloads in File Manager"
-            onClicked: if (root.downloadService) root.downloadService.revealInFileManager("")
             foreground: root.foreground
             accent: root.accent
+            onClicked: if (root.downloadService) root.downloadService.revealInFileManager("")
           }
 
           Button {
             text: "Clear Finished"
             iconText: "\uf1f8"
+            fontSize: Style.font.caption
             tooltipText: "Clear completed and failed downloads"
-            onClicked: if (root.downloadService) root.downloadService.clearCompleted()
             foreground: root.foreground
             accent: root.accent
+            onClicked: if (root.downloadService) root.downloadService.clearCompleted()
           }
         }
       }
@@ -134,7 +136,7 @@ Item {
       ListView {
         id: downloadListView
         anchors.fill: parent
-        anchors.margins: Style.gapsOut
+        anchors.margins: Style.spacing.md
         spacing: 0
         model: root.displayedJobs
         boundsBehavior: Flickable.StopAtBounds
@@ -177,13 +179,14 @@ Item {
 
         Column {
           anchors.centerIn: parent
-          spacing: Style.gapsOut
+          spacing: Style.spacing.md
 
           Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "\uf019"
             font.pixelSize: Style.space(40)
             color: root.dim
+            textFormat: Text.PlainText
           }
 
           Text {
@@ -193,6 +196,7 @@ Item {
               : "No download history found. Download videos or audio from the Discover tab!"
             font.pixelSize: Style.font.body
             color: root.dim
+            textFormat: Text.PlainText
           }
         }
       }

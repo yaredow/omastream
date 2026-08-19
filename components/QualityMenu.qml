@@ -12,6 +12,11 @@ Item {
 
   signal qualitySelected(var formatItem)
 
+  property color foreground: Color.menu.text
+  property color accent: Color.accent
+  property color dim: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.56)
+  property color faint: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
+
   implicitWidth: menuButton.implicitWidth
   implicitHeight: menuButton.implicitHeight
 
@@ -21,6 +26,8 @@ Item {
     text: getActiveLabel()
     iconText: "\uf013"
     tooltipText: "Select Playback Quality"
+    foreground: root.foreground
+    accent: root.accent
     onClicked: qualityPopup.open()
   }
 
@@ -38,9 +45,9 @@ Item {
 
   QQC.Popup {
     id: qualityPopup
-    y: menuButton.height + Style.gapsOut
+    y: menuButton.height + Style.spacing.xs
     width: Style.space(260)
-    padding: Style.gapsOut
+    padding: Style.spacing.md
     modal: true
     focus: true
     closePolicy: QQC.Popup.CloseOnEscape | QQC.Popup.CloseOnPressOutside
@@ -52,16 +59,17 @@ Item {
     }
 
     contentItem: Column {
-      spacing: Style.gapsOut / 2
+      spacing: Style.spacing.xs
       width: parent.width
 
       Text {
         text: "STREAM QUALITY"
         font.pixelSize: Style.font.caption
         font.bold: true
-        color: Color.muted
-        leftPadding: Style.gapsOut
-        topPadding: Style.gapsOut / 2
+        color: root.dim
+        leftPadding: Style.spacing.sm
+        topPadding: Style.spacing.xs
+        textFormat: Text.PlainText
       }
 
       Repeater {
@@ -73,22 +81,23 @@ Item {
           width: parent.width
           height: Style.space(36)
           radius: 2
-          color: itemMouse.containsMouse
-            ? Color.menu.selectedBackground
-            : (modelData.id === root.activeFormatId ? Color.menu.selectedBackground : "transparent")
+          color: modelData.id === root.activeFormatId
+            ? Style.selectedFillFor(root.foreground, root.accent)
+            : (itemMouse.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : "transparent")
 
           Row {
             anchors.fill: parent
-            anchors.leftMargin: Style.gapsOut
-            anchors.rightMargin: Style.gapsOut
-            spacing: Style.gapsOut
+            anchors.leftMargin: Style.spacing.sm
+            anchors.rightMargin: Style.spacing.sm
+            spacing: Style.spacing.sm
 
             Text {
               anchors.verticalCenter: parent.verticalCenter
               text: modelData.id === root.activeFormatId ? "\uf00c" : " "
-              color: Color.accent
+              color: root.accent
               font.pixelSize: Style.font.body
               width: Style.space(16)
+              textFormat: Text.PlainText
             }
 
             Column {
@@ -99,14 +108,16 @@ Item {
                 text: modelData.label || "Auto"
                 font.pixelSize: Style.font.body
                 font.bold: modelData.id === root.activeFormatId
-                color: Color.menu.text
+                color: root.foreground
+                textFormat: Text.PlainText
               }
 
               Text {
                 text: modelData.detail || ""
                 font.pixelSize: Style.font.caption
-                color: Color.muted
+                color: root.dim
                 visible: (modelData.detail || "") !== ""
+                textFormat: Text.PlainText
               }
             }
           }
