@@ -47,6 +47,7 @@ Rectangle {
         source: (root.job && root.job.thumbnailUrl) || ""
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
+        sourceSize: Qt.size(Style.space(160), Style.space(90))
       }
     }
 

@@ -499,6 +499,7 @@ Item {
                   source: modelData.thumbnailUrl || ""
                   fillMode: Image.PreserveAspectCrop
                   asynchronous: true
+                  sourceSize: Qt.size(Style.space(192), Style.space(108))
                 }
 
                 Rectangle {
@@ -705,6 +706,8 @@ Item {
                 height: Style.space(120)
                 source: (root.playerService && root.playerService.currentItem && root.playerService.currentItem.artworkUrl) || ""
                 fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                sourceSize: Qt.size(Style.space(240), Style.space(240))
               }
             }
 
