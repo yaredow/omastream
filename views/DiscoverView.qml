@@ -595,21 +595,34 @@ Item {
             anchors.centerIn: parent
             spacing: Style.spacing.md
 
+            // Spinning search loader
             Text {
+              visible: root.isSearching
               anchors.horizontalCenter: parent.horizontalCenter
-              text: root.isSearching ? "\uf110" : (root.errorMessage ? "\uf071" : "\uf002")
+              text: "\uf110"
               font.pixelSize: Style.space(32)
               color: root.dim
               textFormat: Text.PlainText
               transformOrigin: Item.Center
 
-              RotationAnimation on rotation {
+              NumberAnimation on rotation {
                 from: 0
                 to: 360
                 duration: 900
                 loops: Animation.Infinite
                 running: root.isSearching
               }
+            }
+
+            // Static search / error icon
+            Text {
+              visible: !root.isSearching
+              anchors.horizontalCenter: parent.horizontalCenter
+              text: root.errorMessage ? "\uf071" : "\uf002"
+              font.pixelSize: Style.space(32)
+              color: root.dim
+              textFormat: Text.PlainText
+              rotation: 0
             }
 
             Text {
