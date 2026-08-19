@@ -117,6 +117,9 @@ Item {
   function performSearch(query) {
     if (!query || query.trim() === "") return
     if (searchProcess.running) searchProcess.running = false
+    if (root.service && root.service.running) {
+      root.service.stop()
+    }
     root.currentQuery = query.trim()
     root.isSearching = true
     root.errorMessage = ""

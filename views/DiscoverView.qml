@@ -39,6 +39,18 @@ Item {
   Connections {
     target: root.playerService
     ignoreUnknownSignals: true
+    function onCurrentItemChanged() {
+      if (root.selectedIndex === -1) {
+        root.selectedVideo = (root.playerService && root.playerService.currentItem)
+          ? root.playerService.currentItem
+          : null
+      }
+    }
+    function onRunningChanged() {
+      if (root.selectedIndex === -1 && (!root.playerService || !root.playerService.running)) {
+        root.selectedVideo = null
+      }
+    }
     function onPausedChanged() {
       if (root.playerService && root.playerService.paused) {
         root.controlsVisible = true
@@ -96,7 +108,9 @@ Item {
       root.selectedVideo = root.filteredVideoList[index]
     } else {
       root.selectedIndex = -1
-      root.selectedVideo = null
+      root.selectedVideo = (root.playerService && root.playerService.currentItem)
+        ? root.playerService.currentItem
+        : null
     }
   }
 

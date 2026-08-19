@@ -196,6 +196,7 @@ Item {
     root.requestLoading = false
     player.stop()
     player.source = ""
+    root.currentItem = null
   }
 
   function seek(positionMs) {
