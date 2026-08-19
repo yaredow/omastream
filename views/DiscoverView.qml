@@ -63,6 +63,18 @@ Item {
   signal quickDownloadRequested(var item)
   signal customDownloadRequested(var item)
   signal searchTriggered(string query)
+  signal clearSearchRequested()
+
+  function clearSearch() {
+    searchInput.text = ""
+    root.rawVideoList = []
+    root.filteredVideoList = []
+    root.selectedVideo = null
+    root.selectedIndex = -1
+    root.errorMessage = ""
+    root.isSearching = false
+    root.clearSearchRequested()
+  }
 
   function updateFilteredList() {
     var filtered = MediaModel.filterResults(root.rawVideoList, root.activeFilter)
@@ -137,16 +149,44 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: Style.spacing.md
 
-        // Search Input
-        TextField {
-          id: searchInput
+        // Search Input Container
+        Item {
           anchors.verticalCenter: parent.verticalCenter
           width: Math.min(Style.space(340), root.width * 0.5)
-          placeholderText: "Search or paste a URL (YouTube, X, Twitch...)"
-          maximumLength: 256
-          foreground: root.foreground
-          accent: root.accent
-          onAccepted: if (text.trim()) root.searchTriggered(text.trim())
+          height: searchInput.implicitHeight
+
+          TextField {
+            id: searchInput
+            anchors.fill: parent
+            placeholderText: "Search or paste a URL (YouTube, X, Twitch...)"
+            maximumLength: 256
+            foreground: root.foreground
+            accent: root.accent
+            onAccepted: if (text.trim()) root.searchTriggered(text.trim())
+            onTextEdited: {
+              if (!String(text || "").trim() && root.rawVideoList.length > 0) {
+                root.clearSearch()
+              }
+            }
+            Keys.onPressed: function(event) {
+              if (event.key === Qt.Key_Escape && (text.length > 0 || root.rawVideoList.length > 0)) {
+                root.clearSearch()
+                event.accepted = true
+              }
+            }
+          }
+
+          Button {
+            anchors.right: parent.right
+            anchors.rightMargin: Style.spacing.xs
+            anchors.verticalCenter: parent.verticalCenter
+            visible: String(searchInput.text || "").length > 0 || root.rawVideoList.length > 0
+            iconText: "\uf00d"
+            tooltipText: "Clear search (Esc)"
+            foreground: root.dim
+            accent: root.accent
+            onClicked: root.clearSearch()
+          }
         }
 
         // Filter & Sort Button

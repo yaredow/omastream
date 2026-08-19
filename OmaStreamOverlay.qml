@@ -127,6 +127,14 @@ Item {
     searchProcess.running = true
   }
 
+  function clearSearch() {
+    if (searchProcess.running) searchProcess.running = false
+    root.currentQuery = ""
+    root.rawVideoList = []
+    root.errorMessage = ""
+    root.isSearching = false
+  }
+
   function playMedia(item, options) {
     if (!root.service || !item) return
     root.service.playMedia(item, options)
@@ -627,6 +635,10 @@ Item {
 
             onSearchTriggered: function(q) {
               root.performSearch(q)
+            }
+
+            onClearSearchRequested: {
+              root.clearSearch()
             }
 
             onPlayRequested: function(item, opts) {
