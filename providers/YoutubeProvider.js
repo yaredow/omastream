@@ -37,12 +37,12 @@ function normalizeFormats(rawFormats) {
 
         // Progressive playback (both video and audio natively interleaved)
         // This is safe for simple Qt MediaPlayer without a local relay.
-        if (hasVideo && hasAudio && height > 0 && (proto === "http" || proto === "https" || proto.indexOf("m3u8") !== -1)) {
+        if (hasVideo && hasAudio && height > 0 && proto !== "m3u8_native" && proto.indexOf("m3u8") === -1) {
             var resLabel = (f.format_note && f.format_note.indexOf("p") !== -1) ? f.format_note : height + "p";
             playback.push({
                 id: String(f.format_id),
                 label: resLabel,
-                detail: proto.indexOf("m3u8") !== -1 ? "HLS" : "Progressive",
+                detail: "Progressive",
                 resolution: resLabel,
                 height: height,
                 fps: fps,
@@ -50,14 +50,25 @@ function normalizeFormats(rawFormats) {
                 hasVideo: true,
                 hasAudio: true,
                 isDirectStreamable: true,
-                transport: proto.indexOf("m3u8") !== -1 ? "hls" : "progressive",
+                transport: "direct",
                 filesize: filesize
             });
-        }
-
-        if (hasVideo && !hasAudio && height > 0) {
-            if (!adaptivePlayback[height] || (f.tbr || 0) > adaptivePlayback[height].tbr) {
-                adaptivePlayback[height] = { height: height, tbr: f.tbr || 0, id: String(f.format_id) };
+        } else if (hasVideo && height > 0) {
+            // HLS or DASH Video streams requiring proxy multiplexing for stability
+            var resLabel = (f.format_note && f.format_note.indexOf("p") !== -1) ? f.format_note : height + "p";
+            if (!adaptivePlayback[height]) {
+                adaptivePlayback[height] = {
+                    id: String(f.format_id),
+                    height: height,
+                    label: resLabel,
+                    detail: "High Quality (Relay)",
+                    resolution: resLabel,
+                    hasVideo: true,
+                    hasAudio: true,
+                    isDirectStreamable: false,
+                    transport: "relay",
+                    playbackSelector: f.format_id + "+bestaudio/best"
+                };
             }
         }
 
