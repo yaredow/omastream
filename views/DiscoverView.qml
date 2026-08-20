@@ -39,18 +39,6 @@ Item {
   Connections {
     target: root.playerService
     ignoreUnknownSignals: true
-    function onCurrentItemChanged() {
-      if (root.selectedIndex === -1) {
-        root.selectedVideo = (root.playerService && root.playerService.currentItem)
-          ? root.playerService.currentItem
-          : null
-      }
-    }
-    function onRunningChanged() {
-      if (root.selectedIndex === -1 && (!root.playerService || !root.playerService.running)) {
-        root.selectedVideo = null
-      }
-    }
     function onPausedChanged() {
       if (root.playerService && root.playerService.paused) {
         root.controlsVisible = true
@@ -73,7 +61,7 @@ Item {
   signal fullscreenRequested()
   signal qualityChanged(var formatItem)
   signal quickDownloadRequested(var item)
-  signal customDownloadRequested(var item)
+  signal customDownloadRequested(var item, var options)
   signal searchTriggered(string query)
   signal clearSearchRequested()
 
@@ -108,9 +96,7 @@ Item {
       root.selectedVideo = root.filteredVideoList[index]
     } else {
       root.selectedIndex = -1
-      root.selectedVideo = (root.playerService && root.playerService.currentItem)
-        ? root.playerService.currentItem
-        : null
+      root.selectedVideo = null
     }
   }
 
@@ -519,11 +505,11 @@ Item {
                 Rectangle {
                   anchors.right: parent.right
                   anchors.bottom: parent.bottom
-                  anchors.margins: 4
-                  height: Style.space(16)
-                  width: durText.implicitWidth + 8
-                  radius: 3
-                  color: modelData.liveNow ? "#ef4444" : "#cc000000"
+                  anchors.margins: Style.spacing.sm
+                  width: durText.contentWidth + Style.space(12)
+                  height: durText.contentHeight + Style.space(4)
+                  radius: Style.radius.sm
+                  color: modelData.liveNow ? "#ef4444" : Color.menu.background
 
                   Text {
                     id: durText
@@ -531,7 +517,7 @@ Item {
                     text: modelData.durationText || ""
                     font.pixelSize: 10
                     font.bold: true
-                    color: "#ffffff"
+                    color: modelData.liveNow ? "#ffffff" : root.foreground
                   }
                 }
               }
@@ -570,7 +556,7 @@ Item {
                     visible: (modelData.viewCountText || "") !== ""
                   }
                   Text {
-                    text: "· " + modelData.publishedText
+                    text: (modelData.viewCountText ? "· " : "") + (modelData.publishedText || "")
                     font.pixelSize: Style.font.caption
                     color: root.dim
                     textFormat: Text.PlainText
@@ -764,22 +750,15 @@ Item {
 
             // Play button overlay (only when not playing)
             Rectangle {
-              anchors.centerIn: parent
-              width: Style.space(52)
-              height: Style.space(52)
-              radius: height / 2
-              color: playHover.hovered ? Color.accent : "#88000000"
+              anchors.fill: parent
+              color: Qt.rgba(Color.menu.background.r, Color.menu.background.g, Color.menu.background.b, 0.5)
               visible: !root.isCurrentVideoPlaying && root.selectedVideo !== null
-
-              HoverHandler {
-                id: playHover
-              }
 
               Text {
                 anchors.centerIn: parent
                 text: "\uf04b"
                 font.pixelSize: Style.font.title
-                color: "#ffffff"
+                color: root.foreground
               }
 
               MouseArea {
@@ -795,7 +774,7 @@ Item {
               anchors.left: parent.left
               anchors.right: parent.right
               height: Style.space(40)
-              color: "#99000000"
+              color: Qt.rgba(Color.menu.background.r, Color.menu.background.g, Color.menu.background.b, 0.8)
               visible: root.isCurrentVideoPlaying && root.controlsVisible
 
               Row {
@@ -810,7 +789,8 @@ Item {
                   text: (root.playerService && root.playerService.currentItem && root.playerService.currentItem.title) || "Now Playing"
                   font.pixelSize: Style.font.body
                   font.bold: true
-                  color: "#ffffff"
+                  color: root.foreground
+                  textFormat: Text.PlainText
                   elide: Text.ElideRight
                 }
 
@@ -821,6 +801,7 @@ Item {
 
                   QualityMenu {
                     formats: root.playerService ? root.playerService.currentFormats : ({})
+                    formatsLoading: root.playerService ? root.playerService.formatsLoading : false
                     activeFormatId: root.playerService ? root.playerService.activeFormatId : "auto"
                     onQualitySelected: function(item) {
                       root.qualityChanged(item)
@@ -1042,7 +1023,7 @@ Item {
               font.bold: true
               color: root.foreground
               textFormat: Text.PlainText
-              elide: Text.ElideRight
+              wrapMode: Text.Wrap
               width: parent.width
             }
 
@@ -1066,6 +1047,7 @@ Item {
                 font.pixelSize: Style.font.body
                 color: root.dim
                 textFormat: Text.PlainText
+                visible: !!(root.selectedVideo && root.selectedVideo.publishedText)
               }
             }
 
@@ -1100,10 +1082,25 @@ Item {
             Button {
               text: "Download"
               iconText: "\uf019"
-              tooltipText: "Download Best Quality to ~/Downloads"
+              tooltipText: "Select quality and download"
               foreground: root.foreground
               accent: root.accent
-              onClicked: root.quickDownloadRequested(root.selectedVideo)
+              onClicked: {
+                if (root.playerService && root.selectedVideo) {
+                  root.playerService.fetchFormats(root.selectedVideo)
+                }
+                downloadPicker.item = root.selectedVideo
+                downloadPicker.open()
+              }
+            }
+          }
+
+          DownloadPicker {
+            id: downloadPicker
+            parent: root
+            formats: (root.playerService && root.playerService.currentFormats) || ({ streamable: [], downloadVideo: [], downloadAudio: [] })
+            onDownloadRequested: function(item, opts) {
+              root.customDownloadRequested(item, opts)
             }
           }
 

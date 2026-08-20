@@ -1,12 +1,12 @@
 .pragma library
 
 function normalizeFormats(rawFormats) {
-    if (!Array.isArray(rawFormats)) return { streamable: [], downloadVideo: [], downloadAudio: [] };
+    if (!Array.isArray(rawFormats)) return { playback: [], downloadVideo: [], downloadAudio: [] };
 
-    var streamable = [
+    var playback = [
         {
             id: "auto",
-            label: "Auto (Recommended)",
+            label: "Auto",
             detail: "Best direct stream",
             resolution: "Auto",
             height: 0,
@@ -17,6 +17,7 @@ function normalizeFormats(rawFormats) {
     ];
 
     var downloadResolutions = {};
+    var adaptivePlayback = {};
     var audioMap = {};
 
     for (var i = 0; i < rawFormats.length; i++) {
@@ -34,13 +35,14 @@ function normalizeFormats(rawFormats) {
         var fps = f.fps || 30;
         var filesize = f.filesize || f.filesize_approx || 0;
 
-        // Progressive streamable (both video and audio, direct HTTP or m3u8)
-        if (hasVideo && hasAudio && height > 0) {
-            var resLabel = height + "p";
-            streamable.push({
+        // Progressive playback (both video and audio natively interleaved)
+        // This is safe for simple Qt MediaPlayer without a local relay.
+        if (hasVideo && hasAudio && height > 0 && (proto === "http" || proto === "https" || proto.indexOf("m3u8") !== -1)) {
+            var resLabel = (f.format_note && f.format_note.indexOf("p") !== -1) ? f.format_note : height + "p";
+            playback.push({
                 id: String(f.format_id),
-                label: resLabel + " (" + ext.toUpperCase() + ")",
-                detail: (f.vcodec ? f.vcodec.split(".")[0] : "") + " · " + (fps > 30 ? fps + "fps" : "Standard"),
+                label: resLabel,
+                detail: proto.indexOf("m3u8") !== -1 ? "HLS" : "Progressive",
                 resolution: resLabel,
                 height: height,
                 fps: fps,
@@ -48,13 +50,27 @@ function normalizeFormats(rawFormats) {
                 hasVideo: true,
                 hasAudio: true,
                 isDirectStreamable: true,
+                transport: proto.indexOf("m3u8") !== -1 ? "hls" : "progressive",
                 filesize: filesize
             });
         }
 
+        if (hasVideo && !hasAudio && height > 0) {
+            if (!adaptivePlayback[height] || (f.tbr || 0) > adaptivePlayback[height].tbr) {
+                adaptivePlayback[height] = { height: height, tbr: f.tbr || 0, id: String(f.format_id) };
+            }
+        }
+
         // Available video resolutions for downloading (even if video-only stream that ffmpeg will merge)
         if (hasVideo && height >= 144) {
-            var key = height + "p";
+            var resKey = (f.format_note && f.format_note.indexOf("p") !== -1) ? f.format_note : height + "p";
+            var key = resKey;
+            var qualityTag = "";
+            if (resKey.indexOf("2160p") !== -1 || height >= 2160) qualityTag = " (4K)";
+            else if (resKey.indexOf("1440p") !== -1 || height >= 1440) qualityTag = " (2K)";
+            else if (resKey.indexOf("1080p") !== -1 || height >= 1080) qualityTag = " (Full HD)";
+            else if (resKey.indexOf("720p") !== -1 || height >= 720) qualityTag = " (HD)";
+
             if (!downloadResolutions[key] || (height >= (downloadResolutions[key].height || 0) && (f.tbr || 0) > (downloadResolutions[key].tbr || 0))) {
                 downloadResolutions[key] = {
                     id: String(f.format_id),
@@ -62,10 +78,11 @@ function normalizeFormats(rawFormats) {
                     width: width,
                     fps: fps,
                     resolution: key,
-                    label: key + (fps > 30 ? " (" + fps + "fps)" : ""),
-                    detail: (f.vcodec ? f.vcodec.split(".")[0] : ext.toUpperCase()),
+                    label: key + qualityTag,
+                    detail: (f.vcodec ? f.vcodec.split(".")[0] : ext.toUpperCase()) + " \u00B7 High Definition",
                     filesize: filesize,
                     tbr: f.tbr || 0,
+                    downloadSelector: hasAudio ? String(f.format_id) : String(f.format_id) + "+bestaudio",
                     hasAudio: hasAudio
                 };
             }
@@ -80,7 +97,7 @@ function normalizeFormats(rawFormats) {
                     id: String(f.format_id),
                     ext: ext,
                     abr: abr,
-                    label: ext.toUpperCase() + (abr > 0 ? " ~" + abr + " kbps" : " High Quality"),
+                    label: ext.toUpperCase() + (abr > 0 ? " (" + abr + " kbps)" : ""),
                     detail: acodec !== "none" ? acodec.split(".")[0] : "Audio",
                     filesize: filesize
                 };
@@ -88,18 +105,34 @@ function normalizeFormats(rawFormats) {
         }
     }
 
-    // Sort streamable by height descending (keep auto first)
-    var sortedStreamable = [streamable[0]].concat(
-        streamable.slice(1).sort(function(a, b) { return b.height - a.height; })
+    for (var adaptiveHeight in adaptivePlayback) {
+        var adaptive = adaptivePlayback[adaptiveHeight];
+        playback.push({
+            id: "relay-" + adaptive.id,
+            label: adaptive.height + "p",
+            detail: "High Quality (Relay)",
+            resolution: adaptive.height + "p",
+            height: adaptive.height,
+            hasVideo: true,
+            hasAudio: true,
+            isDirectStreamable: false,
+            transport: "relay",
+            playbackSelector: adaptive.id + "+bestaudio/best"
+        });
+    }
+
+    // Sort playback by height descending (keep auto first)
+    var sortedPlayback = [playback[0]].concat(
+        playback.slice(1).sort(function(a, b) { return b.height - a.height; })
     );
 
-    // Filter unique streamable heights
-    var uniqueStreamable = [];
+    // Filter unique playback heights
+    var uniquePlayback = [];
     var seenHeights = {};
-    for (var j = 0; j < sortedStreamable.length; j++) {
-        var sItem = sortedStreamable[j];
+    for (var j = 0; j < sortedPlayback.length; j++) {
+        var sItem = sortedPlayback[j];
         if (sItem.id === "auto" || !seenHeights[sItem.height]) {
-            uniqueStreamable.push(sItem);
+            uniquePlayback.push(sItem);
             if (sItem.height) seenHeights[sItem.height] = true;
         }
     }
@@ -119,7 +152,7 @@ function normalizeFormats(rawFormats) {
     downloadAudio.sort(function(a, b) { return b.abr - a.abr; });
 
     return {
-        streamable: uniqueStreamable,
+        playback: uniquePlayback,
         downloadVideo: downloadVideo,
         downloadAudio: downloadAudio
     };

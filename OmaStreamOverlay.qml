@@ -48,6 +48,8 @@ Item {
   readonly property int activeDownloadCount: service && service.downloads ? service.downloads.activeCount : 0
 
   readonly property string searchScriptPath: Qt.resolvedUrl("scripts/omastream-search").toString().replace(/^file:\/\//, "")
+  readonly property string uploadTimeScriptPath: Qt.resolvedUrl("scripts/omastream-upload-time").toString().replace(/^file:\/\//, "")
+  property var metadataCache: ({})
 
   readonly property int cardWidth: Math.min(Style.space(1100), (panel ? panel.width : 1200) - Style.gapsOut * 2)
   readonly property int cardHeight: Math.min(Style.space(720), (panel ? panel.height : 800) - Style.gapsOut * 2)
@@ -57,6 +59,12 @@ Item {
     interval: 3000
     repeat: false
     onTriggered: if (root.fullscreen && !root.playerPaused) root.controlsVisible = false
+  }
+
+  function toggleControls() {
+    root.controlsVisible = !root.controlsVisible
+    if (root.playerPaused) fullscreenControlsTimer.stop()
+    else fullscreenControlsTimer.restart()
   }
 
   onPlayerPausedChanged: {
@@ -76,11 +84,13 @@ Item {
   function close() {
     root.opened = false
     if (searchProcess.running) searchProcess.running = false
+    if (hydrationProcess.running) hydrationProcess.running = false
   }
 
   function dismiss() {
     root.opened = false
     if (searchProcess.running) searchProcess.running = false
+    if (hydrationProcess.running) hydrationProcess.running = false
     if (root.shell && typeof root.shell.hide === "function")
       root.shell.hide((root.manifest && root.manifest.id) || "user.omastream")
   }
@@ -117,6 +127,7 @@ Item {
   function performSearch(query) {
     if (!query || query.trim() === "") return
     if (searchProcess.running) searchProcess.running = false
+    if (hydrationProcess.running) hydrationProcess.running = false
     if (root.service && root.service.running) {
       root.service.stop()
     }
@@ -133,11 +144,77 @@ Item {
 
   function clearSearch() {
     if (searchProcess.running) searchProcess.running = false
+    if (hydrationProcess.running) hydrationProcess.running = false
+    if (root.service && root.service.running) {
+      root.service.stop()
+    }
     root.searchSerial += 1
     root.currentQuery = ""
     root.rawVideoList = []
     root.errorMessage = ""
     root.isSearching = false
+  }
+
+  function startHydration(cards, serial) {
+    if (!cards || cards.length === 0) return
+    if (hydrationProcess.running) hydrationProcess.running = false
+
+    var nowSecs = Math.floor(Date.now() / 1000)
+    var toFetch = []
+    var updatedCards = cards.slice(0)
+    var cacheModified = false
+
+    for (var i = 0; i < updatedCards.length; i++) {
+      var item = updatedCards[i]
+      if (item.uploadTimeState === "exact") continue
+
+      var cached = root.metadataCache[item.id]
+      if (cached && (nowSecs - cached.cachedAt) < 86400) {
+        MediaModel.mergeHydrationUpdate(item, cached)
+        cacheModified = true
+      } else if (toFetch.length < 12) {
+        toFetch.push(item.id)
+      }
+    }
+
+    if (cacheModified) {
+      root.rawVideoList = updatedCards
+    }
+
+    if (toFetch.length > 0) {
+      hydrationProcess.activeSerial = serial
+      hydrationProcess.command = [root.uploadTimeScriptPath].concat(toFetch)
+      hydrationProcess.running = true
+    }
+  }
+
+  function handleHydrationLine(line, serial) {
+    if (serial !== root.searchSerial) return
+    if (!line || !line.trim()) return
+    try {
+      var ev = JSON.parse(line.trim())
+      if (!ev || !ev.id) return
+
+      if (ev.state === "exact") {
+        ev.cachedAt = Math.floor(Date.now() / 1000)
+        root.metadataCache[ev.id] = ev
+
+        var list = root.rawVideoList
+        var found = false
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].id === ev.id) {
+            MediaModel.mergeHydrationUpdate(list[i], ev)
+            found = true
+            break
+          }
+        }
+        if (found) {
+          root.rawVideoList = list.slice(0)
+        }
+      }
+    } catch (err) {
+      // ignore parse error
+    }
   }
 
   function playMedia(item, options) {
@@ -160,13 +237,20 @@ Item {
 
   function quickDownload(item) {
     if (!root.service || !root.service.downloads || !item) return
+    var fId = root.service.activeFormatId && root.service.activeFormatId !== "auto" ? root.service.activeFormatId : "best"
+    var fLabel = root.service.activeFormatLabel && root.service.activeFormatLabel !== "Auto" ? root.service.activeFormatLabel : "Best Available"
     root.service.downloads.startDownload(item, {
       formatMode: "video_audio",
       container: "mp4",
-      formatId: "best",
-      qualityLabel: "Best Available",
+      formatId: fId,
+      qualityLabel: fLabel,
       destination: "~/Downloads"
     })
+  }
+
+  function startCustomDownload(item, options) {
+    if (!root.service || !root.service.downloads || !item) return
+    root.service.downloads.startDownload(item, options)
   }
 
   Process {
@@ -198,9 +282,23 @@ Item {
         root.rawVideoList = cards
         if (cards.length === 0) {
           root.errorMessage = "No videos found matching: \"" + root.currentQuery + "\""
+        } else {
+          root.startHydration(cards, searchProcess.activeSerial)
         }
       } catch (err) {
         root.errorMessage = "Failed to parse search results."
+      }
+    }
+  }
+
+  Process {
+    id: hydrationProcess
+    property int activeSerial: 0
+    command: []
+    stdout: SplitParser {
+      splitMarker: "\n"
+      onRead: function(line) {
+        root.handleHydrationLine(line, hydrationProcess.activeSerial)
       }
     }
   }
@@ -335,7 +433,8 @@ Item {
                 text: root.playingTitle
                 font.pixelSize: Style.font.title
                 font.bold: true
-                color: "#ffffff"
+                color: root.foreground
+                textFormat: Text.PlainText
                 elide: Text.ElideRight
                 width: parent.width - fsCloseBtn.width - Style.gapsOut
                 anchors.verticalCenter: parent.verticalCenter
@@ -654,8 +753,8 @@ Item {
               root.quickDownload(item)
             }
 
-            onCustomDownloadRequested: function(item) {
-              root.openCustomDownload(item)
+            onCustomDownloadRequested: function(item, opts) {
+              root.startCustomDownload(item, opts)
             }
 
             onFullscreenRequested: root.setFullscreen(true)

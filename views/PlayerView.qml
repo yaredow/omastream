@@ -114,17 +114,19 @@ Item {
               text: (root.service && root.service.currentItem && root.service.currentItem.title) || "No media playing"
               font.pixelSize: Style.font.body
               font.bold: true
-              color: "#ffffff"
+              color: root.foreground
               elide: Text.ElideRight
               width: parent.width
+              textFormat: Text.PlainText
             }
 
             Text {
               text: (root.service && root.service.currentItem && root.service.currentItem.author) || ""
               font.pixelSize: Style.font.caption
-              color: "#cccccc"
+              color: root.dim
               elide: Text.ElideRight
               width: parent.width
+              textFormat: Text.PlainText
             }
           }
 

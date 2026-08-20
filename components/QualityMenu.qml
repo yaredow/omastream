@@ -6,9 +6,9 @@ import qs.Ui
 Item {
   id: root
 
-  property var formats: ({ streamable: [], downloadVideo: [], downloadAudio: [] })
+  property var formats: ({ playback: [], downloadVideo: [], downloadAudio: [] })
   property string activeFormatId: "auto"
-  property bool showDownloadFormats: false
+  property bool formatsLoading: false
 
   signal qualitySelected(var formatItem)
 
@@ -33,10 +33,10 @@ Item {
 
   function getActiveLabel() {
     if (root.activeFormatId === "auto") return "Auto"
-    if (root.formats && root.formats.streamable) {
-      for (var i = 0; i < root.formats.streamable.length; i++) {
-        if (root.formats.streamable[i].id === root.activeFormatId) {
-          return root.formats.streamable[i].label
+    if (root.formats && root.formats.playback) {
+      for (var i = 0; i < root.formats.playback.length; i++) {
+        if (root.formats.playback[i].id === root.activeFormatId) {
+          return root.formats.playback[i].label
         }
       }
     }
@@ -45,9 +45,10 @@ Item {
 
   QQC.Popup {
     id: qualityPopup
+    x: menuButton.width - width
     y: menuButton.height + Style.spacing.xs
-    width: Style.space(260)
-    padding: Style.spacing.md
+    width: Style.space(200)
+    padding: Style.spacing.sm
     modal: true
     focus: true
     closePolicy: QQC.Popup.CloseOnEscape | QQC.Popup.CloseOnPressOutside
@@ -63,7 +64,7 @@ Item {
       width: parent.width
 
       Text {
-        text: "STREAM QUALITY"
+        text: root.formatsLoading ? "DETECTING QUALITIES..." : "STREAM QUALITY"
         font.pixelSize: Style.font.caption
         font.bold: true
         color: root.dim
@@ -73,13 +74,20 @@ Item {
       }
 
       Repeater {
-        model: (root.formats && root.formats.streamable && root.formats.streamable.length > 0)
-          ? root.formats.streamable
-          : [{ id: "auto", label: "Auto (Recommended)", detail: "Best direct stream" }]
+        model: {
+          var list = (root.formats && root.formats.playback && root.formats.playback.length > 0)
+            ? root.formats.playback
+            : [{ id: "auto", label: "Auto", detail: "" }]
+          // Ensure Auto is always present
+          if (list.length > 0 && list[0].id !== "auto") {
+             list = [{ id: "auto", label: "Auto", detail: "" }].concat(list)
+          }
+          return list
+        }
 
         delegate: Rectangle {
           width: parent.width
-          height: Style.space(36)
+          height: Style.space(32)
           radius: 2
           color: modelData.id === root.activeFormatId
             ? Style.selectedFillFor(root.foreground, root.accent)
@@ -100,25 +108,24 @@ Item {
               textFormat: Text.PlainText
             }
 
-            Column {
+            Text {
               anchors.verticalCenter: parent.verticalCenter
-              spacing: 1
+              text: modelData.label || "Auto"
+              font.pixelSize: Style.font.body
+              font.bold: modelData.id === root.activeFormatId
+              color: root.foreground
+              textFormat: Text.PlainText
+            }
 
-              Text {
-                text: modelData.label || "Auto"
-                font.pixelSize: Style.font.body
-                font.bold: modelData.id === root.activeFormatId
-                color: root.foreground
-                textFormat: Text.PlainText
-              }
+            Item { width: Math.max(1, parent.width - parent.children[0].width - parent.children[1].implicitWidth - parent.children[3].implicitWidth - Style.spacing.sm * 3); height: 1 }
 
-              Text {
-                text: modelData.detail || ""
-                font.pixelSize: Style.font.caption
-                color: root.dim
-                visible: (modelData.detail || "") !== ""
-                textFormat: Text.PlainText
-              }
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: modelData.detail || ""
+              font.pixelSize: Style.font.caption
+              color: root.dim
+              visible: (modelData.detail || "") !== ""
+              textFormat: Text.PlainText
             }
           }
 

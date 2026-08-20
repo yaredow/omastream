@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+import sys
+import os
+import subprocess
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+def get_stream_urls(url, format_selector):
+    cmd = ["yt-dlp", "--no-warnings", "--no-playlist", "-g", "-f", format_selector]
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    detect_path = os.path.join(script_dir, "detect-browser.sh")
+    if os.access(detect_path, os.X_OK):
+        try:
+            browser = subprocess.check_output([detect_path], text=True).strip()
+            if browser:
+                cmd.extend(["--cookies-from-browser", browser])
+        except subprocess.CalledProcessError:
+            pass
+            
+    env = os.environ.copy()
+    if env.get("XDG_CURRENT_DESKTOP", "") in ("Hyprland", "omarchy", ""):
+        env["XDG_CURRENT_DESKTOP"] = "GNOME"
+    
+    cmd.append(url)
+    try:
+        output = subprocess.check_output(cmd, text=True, env=env)
+        urls = [u for u in output.strip().split("\n") if u.startswith("http")]
+        return urls
+    except Exception as e:
+        print("ERROR RUNNING YT-DLP:", e)
+        return []
+
+class StreamingHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        urls = get_stream_urls(self.server.yt_url, self.server.yt_format)
+        if not urls:
+            self.send_response(500)
+            self.end_headers()
+            return
+            
+        self.send_response(200)
+        self.send_header('Content-type', 'video/mp2t')
+        self.end_headers()
+        
+        ffmpeg_cmd = ["ffmpeg"]
+        for u in urls:
+            ffmpeg_cmd.extend([
+                "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+                "-i", u
+            ])
+            
+        ffmpeg_cmd.extend([
+            "-c", "copy",
+            "-f", "mpegts",
+            "pipe:1"
+        ])
+        
+        proc = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            while True:
+                chunk = proc.stdout.read(16384)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+        except Exception:
+            pass
+        finally:
+            proc.terminate()
+            proc.wait()
+
+def main():
+    if len(sys.argv) < 3:
+        sys.exit(1)
+        
+    yt_url = sys.argv[1]
+    yt_format = sys.argv[2]
+    
+    server = HTTPServer(('127.0.0.1', 0), StreamingHandler)
+    server.yt_url = yt_url
+    server.yt_format = yt_format
+    
+    port = server.server_port
+    print(f"http://127.0.0.1:{port}")
+    sys.stdout.flush()
+    
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    server.server_close()
+
+if __name__ == "__main__":
+    main()

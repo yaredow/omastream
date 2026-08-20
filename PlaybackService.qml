@@ -24,7 +24,7 @@ Item {
   readonly property bool canTogglePlayback: currentItem !== null
     && !resolving
     && (state === "playing" || state === "paused" || state === "ended")
-  readonly property bool resolving: resolveProcess.running
+  readonly property bool resolving: resolveProcess.running || relayProcess.running
   readonly property bool seekable: player.seekable
   readonly property bool buffering: player.mediaStatus === MediaPlayer.LoadingMedia
     || player.mediaStatus === MediaPlayer.BufferingMedia
@@ -51,6 +51,9 @@ Item {
 
   property string activeFormatId: "auto"
   property string activeFormatLabel: "Auto"
+  onActiveFormatIdChanged: console.log("ACTIVE FORMAT ID CHANGED TO:", activeFormatId)
+  property string requestedFormatId: "auto"
+  property string requestedFormatLabel: "Auto"
   property int formatRequestSerial: 0
   readonly property bool discoveringFormats: formatProcess.running
 
@@ -58,8 +61,12 @@ Item {
   property int activeRequestSerial: 0
   property var pendingRequest: null
 
+  property var currentFormats: ({ playback: [], downloadVideo: [], downloadAudio: [] })
+  property bool formatsLoading: discoveringFormats
+
   readonly property string formatsScriptPath: Qt.resolvedUrl("scripts/omastream-formats").toString().replace(/^file:\/\//, "")
   readonly property string resolveScriptPath: Qt.resolvedUrl("scripts/omastream-resolve").toString().replace(/^file:\/\//, "")
+  readonly property string relayScriptPath: Qt.resolvedUrl("scripts/omastream-relay").toString().replace(/^file:\/\//, "")
 
   // Keep download service instance inside the long-lived service singleton
   readonly property var downloads: downloadServiceInstance
@@ -70,8 +77,30 @@ Item {
 
   function playMedia(item, options) {
     if (!item || !item.id || !item.sourceType) return
+    console.log("PLAY MEDIA CALLED WITH options:", JSON.stringify(options))
 
     options = options || {}
+    var requestedFormatId = options.formatId || "auto"
+    var requestedFormatLabel = options.formatLabel || "Auto"
+    if (requestedFormatId !== "auto" && item.sourceType === "youtube") {
+      var available = root.currentFormats && root.currentFormats.playback
+        ? root.currentFormats.playback : []
+      var playable = false
+      for (var i = 0; i < available.length; i++) {
+        if (available[i].id === requestedFormatId
+            && (available[i].isDirectStreamable 
+                || available[i].transport === "hls"
+                || available[i].transport === "relay")) {
+          playable = true
+          break
+        }
+      }
+      if (!playable) {
+        root.playerError = requestedFormatLabel + " is not directly playable by the embedded player."
+        return
+      }
+    }
+
     root.requestSerial += 1
     root.pendingRequest = {
       serial: root.requestSerial,
@@ -80,10 +109,15 @@ Item {
       formatId: options.formatId || "auto",
       formatLabel: options.formatLabel || "Auto"
     }
+    if (!root.currentItem || root.currentItem.id !== item.id) {
+      root.currentFormats = ({ playback: [], downloadVideo: [], downloadAudio: [] })
+    }
     root.currentItem = item
     root.mode = root.pendingRequest.mode
     root.activeFormatId = root.pendingRequest.formatId
     root.activeFormatLabel = root.pendingRequest.formatLabel
+    root.requestedFormatId = root.pendingRequest.formatId
+    root.requestedFormatLabel = root.pendingRequest.formatLabel
     root.playerError = ""
     root.resolveError = ""
     root.requestLoading = true
@@ -93,6 +127,8 @@ Item {
 
     if (resolveProcess.running) {
       resolveProcess.running = false
+    } else if (relayProcess.running) {
+      relayProcess.running = false
     } else {
       root.startPendingResolution()
     }
@@ -122,15 +158,28 @@ Item {
       if (request.mode === "audio") {
         format = "bestaudio[ext=m4a][protocol^=http]/bestaudio[protocol^=http]/bestaudio"
       } else if (request.formatId && request.formatId !== "auto") {
-        format = request.formatId
+        var selected = null
+        var playback = root.currentFormats && root.currentFormats.playback
+          ? root.currentFormats.playback : []
+        for (var p = 0; p < playback.length; p++) {
+          if (playback[p].id === request.formatId) {
+            selected = playback[p]
+            break
+          }
+        }
+        format = selected && selected.playbackSelector
+          ? selected.playbackSelector
+          : request.formatId
+        if (selected && selected.transport === "relay") {
+          relayProcess.command = [root.relayScriptPath, request.item.originalUrl, String(selected.playbackSelector)]
+          relayProcess.running = true
+          return
+        }
       }
 
       resolveProcess.command = [
         root.resolveScriptPath,
         "--no-warnings",
-        "--extractor-args", root.playbackRetries > 0
-          ? "youtube:player_client=mweb,android"
-          : "youtube:player_client=android,mweb",
         "-g",
         "-f", format,
         request.item.originalUrl
@@ -168,8 +217,8 @@ Item {
       serial: root.requestSerial,
       item: root.currentItem,
       mode: root.mode,
-      formatId: root.activeFormatId,
-      formatLabel: root.activeFormatLabel
+      formatId: root.requestedFormatId,
+      formatLabel: root.requestedFormatLabel
     }
     root.playerError = ""
     root.resolveError = ""
@@ -178,6 +227,7 @@ Item {
     player.source = ""
 
     if (resolveProcess.running) resolveProcess.running = false
+    else if (relayProcess.running) relayProcess.running = false
     else root.startPendingResolution()
   }
 
@@ -197,6 +247,8 @@ Item {
     player.stop()
     player.source = ""
     root.currentItem = null
+    if (resolveProcess.running) resolveProcess.running = false
+    if (relayProcess.running) relayProcess.running = false
   }
 
   function seek(positionMs) {
@@ -253,6 +305,33 @@ Item {
   }
 
   Process {
+    id: relayProcess
+    command: []
+    stdout: SplitParser {
+      onRead: function(line) {
+        var url = String(line || "").trim()
+        if (url.indexOf("http://") === 0 && root.activeRequestSerial === root.requestSerial) {
+          root.startPlayback(url)
+        }
+      }
+    }
+    stderr: StdioCollector {
+      id: relayErrors
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      if (root.pendingRequest) {
+        Qt.callLater(root.startPendingResolution)
+        return
+      }
+      if (exitCode !== 0 && root.activeRequestSerial === root.requestSerial) {
+        root.resolveError = String(relayErrors.text || "").trim() || "Adaptive playback relay failed."
+        root.requestLoading = false
+      }
+    }
+  }
+
+  Process {
     id: resolveProcess
     command: []
     stdout: StdioCollector {
@@ -302,6 +381,7 @@ Item {
       waitForEnd: true
     }
     onExited: function(exitCode) {
+      console.log("FORMAT PROCESS EXITED. Code:", exitCode, "Target:", formatProcess.targetId, "Current:", root.currentItem ? root.currentItem.id : "null", "TextLen:", formatOutput.text ? formatOutput.text.length : 0);
       if (formatProcess.targetSerial !== root.formatRequestSerial
           || formatProcess.targetId !== (root.currentItem ? root.currentItem.id : "")) return
       if (exitCode === 0 && formatOutput.text) {
@@ -309,8 +389,15 @@ Item {
           var parsed = JSON.parse(formatOutput.text)
           if (parsed && parsed.formats) {
             root.currentFormats = YoutubeProvider.normalizeFormats(parsed.formats)
+            console.log("NORMALIZED FORMATS:", root.currentFormats.playback.length, "playback items");
+          } else {
+            console.log("JSON parsed but no formats array!");
           }
-        } catch (e) {}
+        } catch (e) {
+            console.log("JSON PARSE ERROR:", e);
+        }
+      } else {
+        console.log("FORMAT PROCESS FAILED OR EMPTY TEXT");
       }
     }
   }

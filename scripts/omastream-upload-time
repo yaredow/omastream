@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""
+omaStream exact upload time hydration helper.
+Queries exact upload dates and timestamps concurrently for a batch of video IDs/URLs,
+and streams NDJSON updates line-by-line as each video resolves.
+"""
+
+import sys
+import os
+import json
+import subprocess
+import concurrent.futures
+import signal
+
+def resolve_single_video(video_id_or_url, browser=""):
+    vid = video_id_or_url.strip()
+    if not vid:
+        return None
+
+    if not vid.startswith("http://") and not vid.startswith("https://"):
+        url = f"https://www.youtube.com/watch?v={vid}"
+        raw_id = vid
+    else:
+        url = vid
+        raw_id = vid
+
+    cmd = [
+        "yt-dlp",
+        "--dump-single-json",
+        "--skip-download",
+        "--no-warnings",
+        "--no-playlist"
+    ]
+    if browser:
+        cmd.extend(["--cookies-from-browser", browser])
+    cmd.append(url)
+
+    env = os.environ.copy()
+    if env.get("XDG_CURRENT_DESKTOP") in ("Hyprland", "omarchy", ""):
+        env["XDG_CURRENT_DESKTOP"] = "GNOME"
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=12,
+            env=env
+        )
+        if proc.returncode == 0 and proc.stdout:
+            data = json.loads(proc.stdout)
+            resolved_id = data.get("id") or raw_id
+            return {
+                "id": str(resolved_id),
+                "state": "exact",
+                "upload_date": data.get("upload_date"),
+                "timestamp": data.get("timestamp"),
+                "release_timestamp": data.get("release_timestamp")
+            }
+        else:
+            return {
+                "id": str(raw_id),
+                "state": "failed",
+                "error": "extraction_failed"
+            }
+    except subprocess.TimeoutExpired:
+        return {
+            "id": str(raw_id),
+            "state": "failed",
+            "error": "timeout"
+        }
+    except Exception as e:
+        return {
+            "id": str(raw_id),
+            "state": "failed",
+            "error": str(e)
+        }
+
+def main():
+    if len(sys.argv) < 2:
+        sys.exit(0)
+
+    # Clean signal handling
+    def handle_sig(sig, frame):
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, handle_sig)
+    signal.signal(signal.SIGTERM, handle_sig)
+
+    items = [arg.strip() for arg in sys.argv[1:] if arg.strip()]
+    if not items:
+        sys.exit(0)
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    browser = ""
+    detect_path = os.path.join(script_dir, "detect-browser.sh")
+    if os.path.isfile(detect_path) and os.access(detect_path, os.X_OK):
+        try:
+            browser = subprocess.check_output([detect_path], text=True).strip()
+        except Exception:
+            pass
+
+    max_workers = min(4, len(items))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_id = {executor.submit(resolve_single_video, item, browser): item for item in items}
+        for future in concurrent.futures.as_completed(future_to_id):
+            try:
+                res = future.result()
+                if res:
+                    sys.stdout.write(json.dumps(res) + "\n")
+                    sys.stdout.flush()
+            except Exception as e:
+                item_id = future_to_id[future]
+                sys.stdout.write(json.dumps({"id": item_id, "state": "failed", "error": str(e)}) + "\n")
+                sys.stdout.flush()
+
+if __name__ == "__main__":
+    main()

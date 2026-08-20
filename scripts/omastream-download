@@ -70,12 +70,13 @@ def main():
     if args.format_mode == "audio_only":
         audio_format = args.format_id if args.format_id not in ("best", "auto") else "bestaudio/best"
         cmd.extend(["-x", "--audio-format", args.container, "-f", audio_format])
-    elif args.format_id and args.format_id != "best" and args.format_id != "auto":
+    elif args.format_id and args.format_id not in ("best", "auto"):
         if args.format_mode == "video_only":
             cmd.extend(["-f", args.format_id])
         else:
-            # Try specified video format + best audio, fallback to format_id directly
-            cmd.extend(["-f", f"{args.format_id}+bestaudio/best", "--merge-output-format", args.container])
+            # Explicit selections must remain explicit. Do not append a generic
+            # /best fallback because it can silently downgrade to a progressive stream.
+            cmd.extend(["-f", args.format_id, "--merge-output-format", args.container])
     else:
         # Default best video + best audio merged
         cmd.extend(["-f", "bestvideo+bestaudio/best", "--merge-output-format", args.container])

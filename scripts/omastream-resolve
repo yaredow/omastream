@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Force yt-dlp to use GNOME Keyring on unknown WMs
 if [[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] || [[ "${XDG_CURRENT_DESKTOP:-}" == "omarchy" ]] || [ -z "${XDG_CURRENT_DESKTOP:-}" ]; then
     export XDG_CURRENT_DESKTOP="GNOME"
 fi
@@ -9,7 +8,7 @@ fi
 BROWSER=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -x "$SCRIPT_DIR/detect-browser.sh" ]; then
-    BROWSER="$("$SCRIPT_DIR/detect-browser.sh" || true)"
+    BROWSER="$($SCRIPT_DIR/detect-browser.sh || true)"
 fi
 
 args=(yt-dlp)

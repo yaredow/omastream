@@ -22,18 +22,33 @@ function formatViews(views) {
     return value + " views";
 }
 
-function formatUploadDate(dateStr) {
-    if (!dateStr) return "";
-    if (typeof dateStr === "string" && dateStr.length === 8 && /^\d{8}$/.test(dateStr)) {
+function formatUploadDate(dateStr, timestamp, fallbackText) {
+    var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    
+    // 1. Exact Unix timestamp
+    if (timestamp && typeof timestamp === "number" && timestamp > 0) {
+        var d = new Date(timestamp * 1000);
+        if (!isNaN(d.getTime())) {
+            return months[d.getUTCMonth()] + " " + d.getUTCDate() + ", " + d.getUTCFullYear();
+        }
+    }
+
+    // 2. Exact YYYYMMDD date string
+    if (dateStr && typeof dateStr === "string" && dateStr.length === 8 && /^\d{8}$/.test(dateStr)) {
         var year = dateStr.substring(0, 4);
         var month = parseInt(dateStr.substring(4, 6), 10) - 1;
         var day = parseInt(dateStr.substring(6, 8), 10);
-        var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         if (month >= 0 && month < 12) {
             return months[month] + " " + day + ", " + year;
         }
     }
-    return String(dateStr);
+
+    // 3. Fallback relative text (e.g. "3 days ago")
+    if (fallbackText && typeof fallbackText === "string" && fallbackText.trim()) {
+        return fallbackText.trim();
+    }
+
+    return "";
 }
 
 function parseSearchResults(data) {
@@ -45,8 +60,28 @@ function parseSearchResults(data) {
 
         var isLive = item.is_live === true || item.live_status === "is_live";
         var durationSecs = Number(item.duration) || 0;
-        var uploadDate = item.upload_date || "";
-        var publishedText = formatUploadDate(uploadDate);
+        
+        var rawUploadDate = (item.upload_date && typeof item.upload_date === "string" && /^\d{8}$/.test(item.upload_date)) ? item.upload_date : "";
+        var exactTimestamp = (typeof item.timestamp === "number" && item.timestamp > 0)
+            ? item.timestamp
+            : ((typeof item.release_timestamp === "number" && item.release_timestamp > 0) ? item.release_timestamp : 0);
+
+        var rawPublishedText = item.published_time_text || item.publishedTimeText || "";
+        if (typeof rawPublishedText === "object" && rawPublishedText !== null) {
+            rawPublishedText = rawPublishedText.simpleText || "";
+        }
+
+        var approxSeconds = Number(item.published_time_seconds) || 0;
+        var precision = item.published_time_precision || (exactTimestamp > 0 ? "exact" : (rawPublishedText ? "relative" : "unknown"));
+
+        var uploadTimeState = "unavailable";
+        if (exactTimestamp > 0 || rawUploadDate) {
+            uploadTimeState = "exact";
+        } else if (rawPublishedText) {
+            uploadTimeState = "relative";
+        }
+
+        var publishedText = formatUploadDate(rawUploadDate, exactTimestamp, rawPublishedText);
 
         var thumb = "";
         if (item.thumbnails && Array.isArray(item.thumbnails) && item.thumbnails.length > 0) {
@@ -70,8 +105,13 @@ function parseSearchResults(data) {
             durationText: isLive ? "LIVE" : formatDuration(durationSecs),
             viewCount: item.view_count || 0,
             viewCountText: formatViews(item.view_count),
-            uploadDate: uploadDate,
+            uploadDate: rawUploadDate,
+            uploadTimestamp: exactTimestamp,
+            approxUploadTimestamp: approxSeconds,
+            uploadTimeState: uploadTimeState,
+            uploadTimePrecision: precision,
             publishedText: publishedText,
+            publishedTextRaw: rawPublishedText,
             description: item.description || "No description available.",
             artworkUrl: thumb,
             thumbnailUrl: thumb,
@@ -81,6 +121,20 @@ function parseSearchResults(data) {
         });
     }
     return results;
+}
+
+function mergeHydrationUpdate(item, update) {
+    if (!item || !update || item.id !== update.id) return item;
+    if (update.state === "exact") {
+        var exactDate = update.upload_date || item.uploadDate || "";
+        var exactTs = update.timestamp || update.release_timestamp || item.uploadTimestamp || 0;
+        item.uploadDate = exactDate;
+        item.uploadTimestamp = exactTs;
+        item.uploadTimeState = "exact";
+        item.uploadTimePrecision = "exact";
+        item.publishedText = formatUploadDate(exactDate, exactTs, item.publishedTextRaw);
+    }
+    return item;
 }
 
 function filterResults(items, filterType) {
@@ -103,17 +157,41 @@ function filterResults(items, filterType) {
     });
 }
 
+function getBestTimestamp(item) {
+    if (!item) return 0;
+    if (item.uploadTimestamp && item.uploadTimestamp > 0) return item.uploadTimestamp;
+    if (item.approxUploadTimestamp && item.approxUploadTimestamp > 0) return item.approxUploadTimestamp;
+    if (item.uploadDate && item.uploadDate.length === 8) {
+        var y = parseInt(item.uploadDate.substring(0, 4), 10);
+        var m = parseInt(item.uploadDate.substring(4, 6), 10) - 1;
+        var d = parseInt(item.uploadDate.substring(6, 8), 10);
+        var dt = new Date(Date.UTC(y, m, d));
+        return Math.floor(dt.getTime() / 1000);
+    }
+    return 0;
+}
+
 function sortResults(items, sortKey) {
     if (!items || !Array.isArray(items)) return [];
     var sorted = items.slice(0);
 
     if (sortKey === "newest") {
         sorted.sort(function(a, b) {
-            return String(b.uploadDate || "").localeCompare(String(a.uploadDate || ""));
+            var tsA = getBestTimestamp(a);
+            var tsB = getBestTimestamp(b);
+            if (tsA === 0 && tsB === 0) return 0;
+            if (tsA === 0) return 1;
+            if (tsB === 0) return -1;
+            return tsB - tsA;
         });
     } else if (sortKey === "oldest") {
         sorted.sort(function(a, b) {
-            return String(a.uploadDate || "").localeCompare(String(b.uploadDate || ""));
+            var tsA = getBestTimestamp(a);
+            var tsB = getBestTimestamp(b);
+            if (tsA === 0 && tsB === 0) return 0;
+            if (tsA === 0) return 1;
+            if (tsB === 0) return -1;
+            return tsA - tsB;
         });
     } else if (sortKey === "views") {
         sorted.sort(function(a, b) {

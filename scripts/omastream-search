@@ -1,50 +1,230 @@
-#!/usr/bin/env bash
-# omaStream search provider using yt-dlp.
-# Returns normalized JSON list of search results.
+#!/usr/bin/env python3
+"""
+omaStream search adapter.
+Returns a normalized JSON list of search results.
+Fast path: Uses YouTube Innertube with deterministic relative-time parsing.
+Fallback & Direct URL path: Uses yt-dlp.
+"""
 
-set -euo pipefail
+import sys
+import os
+import json
+import urllib.request
+import re
+import time
+import subprocess
 
-QUERY="${1:-}"
-LIMIT="${2:-30}"
+def parse_relative_time(text, now_epoch=None):
+    if not text or not isinstance(text, str):
+        return None
+    if now_epoch is None:
+        now_epoch = int(time.time())
+    clean = text.strip()
+    clean = re.sub(r'^(Streamed|Premiered)\s+', '', clean, flags=re.IGNORECASE).strip()
+    if clean.lower() in ('just now', 'today'):
+        return {
+            'published_time_text': text,
+            'published_time_seconds': now_epoch,
+            'published_time_precision': 'minute',
+            'published_time_source': 'youtube_search_relative'
+        }
+    if clean.lower() == 'yesterday':
+        return {
+            'published_time_text': text,
+            'published_time_seconds': now_epoch - 86400,
+            'published_time_precision': 'day',
+            'published_time_source': 'youtube_search_relative'
+        }
+    m = re.match(r'^(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago$', clean, re.IGNORECASE)
+    if m:
+        val = int(m.group(1))
+        unit = m.group(2).lower()
+        multipliers = {
+            'second': 1,
+            'minute': 60,
+            'hour': 3600,
+            'day': 86400,
+            'week': 7 * 86400,
+            'month': 30 * 86400,
+            'year': 365 * 86400
+        }
+        sec = now_epoch - (val * multipliers.get(unit, 86400))
+        return {
+            'published_time_text': text,
+            'published_time_seconds': sec,
+            'published_time_precision': unit,
+            'published_time_source': 'youtube_search_relative'
+        }
+    return None
 
-if [ -z "$QUERY" ]; then
-    printf '[]\n'
-    exit 0
-fi
+def parse_duration_text(dur_str):
+    if not dur_str:
+        return 0
+    parts = dur_str.strip().split(':')
+    try:
+        parts = [int(p) for p in parts]
+        if len(parts) == 3:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        elif len(parts) == 2:
+            return parts[0] * 60 + parts[1]
+        elif len(parts) == 1:
+            return parts[0]
+    except Exception:
+        pass
+    return 0
 
-# Ensure numeric limit
-if ! [[ "$LIMIT" =~ ^[0-9]+$ ]]; then
-    LIMIT=30
-fi
+def parse_view_count(view_str):
+    if not view_str:
+        return 0
+    m = re.search(r'([\d,]+)', view_str)
+    if m:
+        try:
+            return int(m.group(1).replace(',', ''))
+        except Exception:
+            pass
+    return 0
 
-# Run yt-dlp flat-playlist search
-if ! command -v yt-dlp >/dev/null 2>&1; then
-    printf 'yt-dlp is not installed\n' >&2
-    exit 127
-fi
-if ! command -v jq >/dev/null 2>&1; then
-    printf 'jq is not installed\n' >&2
-    exit 127
-fi
+def search_innertube(query, limit=30):
+    req = urllib.request.Request(
+        'https://www.youtube.com/youtubei/v1/search',
+        data=json.dumps({
+            'context': {'client': {'clientName': 'WEB', 'clientVersion': '2.20240101.00.00'}},
+            'query': query
+        }).encode('utf-8'),
+        headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+    )
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        data = json.loads(resp.read().decode('utf-8'))
+    
+    results = []
+    now_epoch = int(time.time())
+    try:
+        sections = data['contents']['twoColumnSearchResultsRenderer']['primaryContents']['sectionListRenderer']['contents']
+        for sec in sections:
+            if 'itemSectionRenderer' in sec:
+                for item in sec['itemSectionRenderer']['contents']:
+                    if 'videoRenderer' in item:
+                        v = item['videoRenderer']
+                        vid_id = v.get('videoId')
+                        if not vid_id:
+                            continue
+                        
+                        title = ''
+                        if 'title' in v and 'runs' in v['title'] and len(v['title']['runs']) > 0:
+                            title = v['title']['runs'][0].get('text', '')
+                        
+                        uploader = ''
+                        if 'ownerText' in v and 'runs' in v['ownerText'] and len(v['ownerText']['runs']) > 0:
+                            uploader = v['ownerText']['runs'][0].get('text', '')
+                        
+                        dur_text = v.get('lengthText', {}).get('simpleText', '')
+                        duration = parse_duration_text(dur_text)
+                        
+                        views_text = v.get('viewCountText', {}).get('simpleText', '')
+                        view_count = parse_view_count(views_text)
+                        
+                        pub_text = v.get('publishedTimeText', {}).get('simpleText', '')
+                        rel_time = parse_relative_time(pub_text, now_epoch)
+                        
+                        thumbs = v.get('thumbnail', {}).get('thumbnails', [])
+                        
+                        desc = ''
+                        if 'detailedMetadataSnippets' in v:
+                            try:
+                                desc = v['detailedMetadataSnippets'][0]['snippetText']['runs'][0]['text']
+                            except Exception:
+                                pass
+                        
+                        res = {
+                            '_type': 'url',
+                            'ie_key': 'Youtube',
+                            'id': vid_id,
+                            'url': f'https://www.youtube.com/watch?v={vid_id}',
+                            'webpage_url': f'https://www.youtube.com/watch?v={vid_id}',
+                            'title': title,
+                            'description': desc,
+                            'uploader': uploader,
+                            'duration': duration,
+                            'view_count': view_count,
+                            'thumbnails': thumbs,
+                            'upload_date': None,
+                            'timestamp': None,
+                            'release_timestamp': None
+                        }
+                        if rel_time:
+                            res.update(rel_time)
+                        results.append(res)
+                        if len(results) >= limit:
+                            break
+    except Exception as e:
+        sys.stderr.write(f'Innertube warning: {e}\n')
+    return results
 
-# Force yt-dlp to use GNOME Keyring on unknown WMs
-if [[ "${XDG_CURRENT_DESKTOP:-}" == "Hyprland" ]] || [[ "${XDG_CURRENT_DESKTOP:-}" == "omarchy" ]] || [ -z "${XDG_CURRENT_DESKTOP:-}" ]; then
-    export XDG_CURRENT_DESKTOP="GNOME"
-fi
+def fallback_ytdlp(query, limit=30):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    browser = ""
+    detect_path = os.path.join(script_dir, "detect-browser.sh")
+    if os.path.isfile(detect_path) and os.access(detect_path, os.X_OK):
+        try:
+            browser = subprocess.check_output([detect_path], text=True).strip()
+        except Exception:
+            pass
 
-BROWSER=""
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -x "$SCRIPT_DIR/detect-browser.sh" ]; then
-    BROWSER="$("$SCRIPT_DIR/detect-browser.sh" || true)"
-fi
+    env = os.environ.copy()
+    if env.get("XDG_CURRENT_DESKTOP") in ("Hyprland", "omarchy", ""):
+        env["XDG_CURRENT_DESKTOP"] = "GNOME"
 
-args=(yt-dlp --flat-playlist --dump-json --skip-download --no-warnings --ignore-errors)
-if [ -n "$BROWSER" ]; then
-    args+=(--cookies-from-browser "$BROWSER")
-fi
+    cmd = ["yt-dlp", "--flat-playlist", "--dump-json", "--skip-download", "--no-warnings", "--ignore-errors"]
+    if browser:
+        cmd.extend(["--cookies-from-browser", browser])
 
-if [[ "$QUERY" == http://* ]] || [[ "$QUERY" == https://* ]]; then
-    "${args[@]}" "$QUERY" 2>/dev/null | jq -s '.'
-else
-    "${args[@]}" "ytsearch${LIMIT}:${QUERY}" 2>/dev/null | jq -s '.'
-fi
+    if query.startswith("http://") or query.startswith("https://"):
+        cmd.append(query)
+    else:
+        cmd.append(f"ytsearch{limit}:{query}")
+
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env=env)
+    stdout, _ = proc.communicate()
+
+    items = []
+    if stdout:
+        for line in stdout.splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    items.append(json.loads(line))
+                except Exception:
+                    pass
+    return items
+
+def main():
+    if len(sys.argv) < 2:
+        print("[]")
+        return
+
+    query = sys.argv[1].strip()
+    if not query:
+        print("[]")
+        return
+
+    limit = 30
+    if len(sys.argv) >= 3:
+        try:
+            limit = int(sys.argv[2])
+        except ValueError:
+            limit = 30
+
+    if query.startswith("http://") or query.startswith("https://"):
+        results = fallback_ytdlp(query, limit)
+    else:
+        try:
+            results = search_innertube(query, limit)
+            if not results:
+                results = fallback_ytdlp(query, limit)
+        except Exception:
+            results = fallback_ytdlp(query, limit)
+
+    sys.stdout.write(json.dumps(results) + "\n")
+
+if __name__ == "__main__":
+    main()
