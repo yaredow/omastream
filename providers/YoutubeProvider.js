@@ -55,20 +55,25 @@ function normalizeFormats(rawFormats) {
             });
         } else if (hasVideo && height > 0) {
             // HLS or DASH Video streams requiring proxy multiplexing for stability
-            var resLabel = (f.format_note && f.format_note.indexOf("p") !== -1) ? f.format_note : height + "p";
-            if (!adaptivePlayback[height]) {
-                adaptivePlayback[height] = {
-                    id: String(f.format_id),
-                    height: height,
-                    label: resLabel,
-                    detail: "High Quality (Relay)",
-                    resolution: resLabel,
-                    hasVideo: true,
-                    hasAudio: true,
-                    isDirectStreamable: false,
-                    transport: "relay",
-                    playbackSelector: f.format_id + "+bestaudio/best"
-                };
+            // MUST be H.264 (avc) because ffmpeg -c copy -f mpegts does not support VP9/AV1
+            if (vcodec.indexOf("avc") !== -1 || vcodec.indexOf("h264") !== -1) {
+                var resLabel = (f.format_note && f.format_note.indexOf("p") !== -1) ? f.format_note : height + "p";
+                // Only overwrite if we don't have one, or if this one has higher framerate
+                if (!adaptivePlayback[height] || (f.tbr || 0) > adaptivePlayback[height].tbr) {
+                    adaptivePlayback[height] = {
+                        id: String(f.format_id),
+                        height: height,
+                        label: resLabel,
+                        detail: "High Quality (Relay)",
+                        resolution: resLabel,
+                        hasVideo: true,
+                        hasAudio: true,
+                        isDirectStreamable: false,
+                        transport: "relay",
+                        tbr: f.tbr || 0,
+                        playbackSelector: f.format_id + "+bestaudio[ext=m4a]/bestaudio[ext=m4a]"
+                    };
+                }
             }
         }
 
