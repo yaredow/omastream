@@ -11,7 +11,7 @@ if [ -x "$SCRIPT_DIR/detect-browser.sh" ]; then
     BROWSER="$($SCRIPT_DIR/detect-browser.sh || true)"
 fi
 
-args=(yt-dlp)
+args=(yt-dlp --extractor-args "youtube:player_client=web_embedded,android,mweb")
 if [ -n "$BROWSER" ]; then
     args+=(--cookies-from-browser "$BROWSER")
 fi

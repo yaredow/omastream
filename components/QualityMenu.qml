@@ -9,6 +9,7 @@ Item {
   property var formats: ({ playback: [], downloadVideo: [], downloadAudio: [] })
   property string activeFormatId: "auto"
   property bool formatsLoading: false
+  readonly property bool popupOpen: qualityPopup.visible
 
   signal qualitySelected(var formatItem)
 
@@ -19,6 +20,10 @@ Item {
 
   implicitWidth: menuButton.implicitWidth
   implicitHeight: menuButton.implicitHeight
+
+  function closePopup() {
+    qualityPopup.close()
+  }
 
   Button {
     id: menuButton

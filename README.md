@@ -8,7 +8,7 @@ omaStream brings YouTube Discovery, an embedded player, and a fully-featured dow
 
 - **Lightweight by design.** Playback is natively integrated into Quickshell, not an Electron YouTube client.
 - **Discover.** Bounded search with exact date hydration, filtering, and timestamp-aware sorting.
-- **Player.** Dedicated player surface with inline & fullscreen playback, audio-only mode, playback rate control, volume slider, and dynamic stream quality inspection.
+- **Player.** Embedded Discover preview plus fullscreen video, audio-only mode with automatic stream fallback, playback rate, volume, and progressive quality selection.
 - **Downloads Manager.** Observable transfer queue, persistent history, real-time speed, ETA, and cancellation.
 - **Custom Download Flow.** Select container (MP4, MKV, WebM, MP3, M4A), audio-only extraction, or specific video resolutions merged via FFmpeg.
 - **Persistent Service.** Shared playback and download queue state between the overlay and bar widget.
@@ -23,7 +23,12 @@ omaStream brings YouTube Discovery, an embedded player, and a fully-featured dow
 | `M` | Mute or unmute |
 | `F` | Enter or leave fullscreen video |
 | `/` | Focus search in Discover mode |
-| `Escape` | Leave fullscreen, clear search focus, or close the overlay |
+| `C` | Toggle fullscreen controls |
+| `Escape` | Leave fullscreen, or close the overlay |
+
+Clearing search or starting a new search stops any active playback session so media cannot keep playing without a player surface.
+
+Closing the overlay leaves playback running so the bar widget can still pause, stop, or change volume.
 
 The bar widget uses middle click for play/pause, right click to stop, and the mouse wheel for volume.
 
@@ -58,24 +63,27 @@ This will also delete your downloads history. To keep your downloaded media, ens
 ## Architecture
 
 ```text
+PlaybackService.qml         # Long-lived playback singleton & download service host
+OmaStreamOverlay.qml        # Overlay shell, search, fullscreen player chrome
+BarWidget.qml               # Compact bar transport controls
 services/
-  PlaybackService.qml       # Long-lived playback singleton & download service host
   DownloadService.qml       # Transfer queue, event parser, and JSON history persistence
   MediaModel.js             # Metadata normalization, formatting, filtering, sorting
   DownloadModel.js          # Job normalization, status badges, byte/speed formatters
 providers/
-  YoutubeProvider.js        # Format normalization & yt-dlp arguments
+  YoutubeProvider.js        # Progressive format normalization & download catalog
 views/
-  DiscoverView.qml          # Search toolbar, filter chips, list & detail preview
-  PlayerView.qml            # Video output, transport controls, quality menu, scrub bar
+  DiscoverView.qml          # Search, list, embedded player, audio mode, errors
   DownloadsView.qml         # Queue & history lists, filter tabs, folder actions
 components/
   QualityMenu.qml           # Stream quality selection menu
+  DownloadPicker.qml        # Custom download options
   DownloadRow.qml           # Transfer progress bar, speed, ETA, and actions
 
 scripts/
   omastream-search          # Fast two-stage relative time search adapter
   omastream-upload-time     # NDJSON streaming exact date hydration worker
   omastream-formats         # Machine-readable format extractor
+  omastream-resolve         # yt-dlp URL resolver wrapper
   omastream-download        # NDJSON event-streaming download process with process-group cleanup
 ```

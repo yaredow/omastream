@@ -58,20 +58,64 @@ Item {
     id: fullscreenControlsTimer
     interval: 3000
     repeat: false
-    onTriggered: if (root.fullscreen && !root.playerPaused) root.controlsVisible = false
+    onTriggered: {
+      if (!root.fullscreen || root.playerPaused) return
+      if (root.qualityPopupOpen) return
+      if (root.service && root.service.errorMessage) return
+      root.controlsVisible = false
+    }
+  }
+
+  readonly property bool qualityPopupOpen: fullscreenQualityMenu && fullscreenQualityMenu.popupOpen
+
+  readonly property string playerErrorText: root.service ? (root.service.errorMessage || "") : ""
+  readonly property string playerStatusText: root.service ? (root.service.statusMessage || "") : ""
+
+  function stopPlaybackSession() {
+    if (root.service && (root.service.currentItem || root.service.hasCurrentRequest))
+      root.service.stop()
+  }
+
+  function revealFullscreenControls() {
+    root.controlsVisible = true
+    if (root.playerPaused || root.qualityPopupOpen || root.playerErrorText)
+      fullscreenControlsTimer.stop()
+    else
+      fullscreenControlsTimer.restart()
   }
 
   function toggleControls() {
     root.controlsVisible = !root.controlsVisible
-    if (root.playerPaused) fullscreenControlsTimer.stop()
-    else fullscreenControlsTimer.restart()
+    if (root.controlsVisible) root.revealFullscreenControls()
+    else fullscreenControlsTimer.stop()
   }
 
   onPlayerPausedChanged: {
     if (!root.fullscreen) return
-    root.controlsVisible = true
-    if (root.playerPaused) fullscreenControlsTimer.stop()
-    else fullscreenControlsTimer.restart()
+    root.revealFullscreenControls()
+  }
+
+  Connections {
+    target: root.service
+    ignoreUnknownSignals: true
+    function onCurrentItemChanged() {
+      if (!root.service || !root.service.currentItem) {
+        if (root.fullscreen) root.setFullscreen(false)
+      }
+    }
+    function onModeChanged() {
+      if (root.fullscreen && root.service && root.service.mode !== "video")
+        root.setFullscreen(false)
+    }
+  }
+
+  Connections {
+    target: fullscreenQualityMenu
+    ignoreUnknownSignals: true
+    function onPopupOpenChanged() {
+      if (fullscreenQualityMenu.popupOpen)
+        root.revealFullscreenControls()
+    }
   }
 
   function open(payloadJson) {
@@ -116,7 +160,8 @@ Item {
     root.fullscreen = enabled && root.service && root.service.mode === "video"
     root.controlsVisible = true
     attachVideoOutput()
-    if (root.fullscreen) fullscreenControlsTimer.restart()
+    if (root.fullscreen) root.revealFullscreenControls()
+    else fullscreenControlsTimer.stop()
     keyCatcher.forceActiveFocus()
   }
 
@@ -128,9 +173,7 @@ Item {
     if (!query || query.trim() === "") return
     if (searchProcess.running) searchProcess.running = false
     if (hydrationProcess.running) hydrationProcess.running = false
-    if (root.service && root.service.running) {
-      root.service.stop()
-    }
+    root.stopPlaybackSession()
     root.currentQuery = query.trim()
     root.isSearching = true
     root.errorMessage = ""
@@ -145,9 +188,7 @@ Item {
   function clearSearch() {
     if (searchProcess.running) searchProcess.running = false
     if (hydrationProcess.running) hydrationProcess.running = false
-    if (root.service && root.service.running) {
-      root.service.stop()
-    }
+    root.stopPlaybackSession()
     root.searchSerial += 1
     root.currentQuery = ""
     root.rawVideoList = []
@@ -237,13 +278,21 @@ Item {
 
   function quickDownload(item) {
     if (!root.service || !root.service.downloads || !item) return
-    var fId = root.service.activeFormatId && root.service.activeFormatId !== "auto" ? root.service.activeFormatId : "best"
-    var fLabel = root.service.activeFormatLabel && root.service.activeFormatLabel !== "Auto" ? root.service.activeFormatLabel : "Best Available"
+    var selector = "bestvideo*+bestaudio/best"
+    var label = "Best Available"
+    if (root.service.bestDownloadSelector)
+      selector = root.service.bestDownloadSelector()
+    var downloads = root.service.currentFormats && root.service.currentFormats.downloadVideo
+      ? root.service.currentFormats.downloadVideo : []
+    if (downloads.length > 0) {
+      selector = downloads[0].downloadSelector || selector
+      label = downloads[0].label || label
+    }
     root.service.downloads.startDownload(item, {
       formatMode: "video_audio",
       container: "mp4",
-      formatId: fId,
-      qualityLabel: fLabel,
+      formatId: selector,
+      qualityLabel: label,
       destination: "~/Downloads"
     })
   }
@@ -358,6 +407,16 @@ Item {
           } else if (event.key === Qt.Key_F) {
             root.toggleFullscreen()
             event.accepted = true
+          } else if (event.key === Qt.Key_M) {
+            if (root.service) root.service.toggleMute()
+            event.accepted = true
+          } else if (event.key === Qt.Key_Slash) {
+            if (!root.fullscreen && discoverView && discoverView.focusSearch)
+              discoverView.focusSearch()
+            event.accepted = true
+          } else if (event.key === Qt.Key_C) {
+            if (root.fullscreen) root.toggleControls()
+            event.accepted = true
           }
         }
 
@@ -371,13 +430,22 @@ Item {
             id: fullscreenVideoOutput
             anchors.fill: parent
             fillMode: VideoOutput.PreserveAspectFit
+          }
 
-            MouseArea {
-              anchors.fill: parent
-              onClicked: {
-                if (root.service) root.service.togglePlayback()
-                parent.forceActiveFocus()
+          MouseArea {
+            id: fullscreenSurfaceMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: (root.controlsVisible || root.playerErrorText) ? Qt.ArrowCursor : Qt.BlankCursor
+            onPositionChanged: root.revealFullscreenControls()
+            onClicked: function(mouse) {
+              if (!root.controlsVisible && !root.playerErrorText) {
+                root.revealFullscreenControls()
+                return
               }
+              if (root.service && !root.playerErrorText)
+                root.service.togglePlayback()
+              keyCatcher.forceActiveFocus()
             }
           }
 
@@ -388,7 +456,10 @@ Item {
             height: width
             radius: width / 2
             color: "#cc000000"
-            visible: root.service && root.service.loading
+            visible: root.service
+              && !root.playerErrorText
+              && root.service.showLoadingOverlay
+            z: 2
 
             Text {
               anchors.centerIn: parent
@@ -407,11 +478,76 @@ Item {
             }
           }
 
-          HoverHandler {
-            id: fullscreenHover
-            onHoveredChanged: {
-              root.controlsVisible = true
-              if (!root.playerPaused) fullscreenControlsTimer.restart()
+          Text {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: Style.spacing.md
+            anchors.bottomMargin: root.controlsVisible ? Style.space(100) : Style.spacing.md
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            text: root.playerStatusText
+            visible: !!root.playerStatusText && !root.playerErrorText
+            color: "#dddddd"
+            font.pixelSize: Style.font.caption
+            textFormat: Text.PlainText
+            z: 3
+          }
+
+          Rectangle {
+            anchors.fill: parent
+            color: "#cc000000"
+            visible: !!root.playerErrorText
+            z: 4
+
+            Column {
+              anchors.centerIn: parent
+              width: Math.min(parent.width - Style.spacing.lg * 2, Style.space(360))
+              spacing: Style.spacing.md
+
+              Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "\uf071"
+                font.pixelSize: Style.space(28)
+                color: "#f59e0b"
+                textFormat: Text.PlainText
+              }
+
+              Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: (root.service && root.service.mode === "audio")
+                  ? "Unable to play audio"
+                  : "Unable to play media"
+                font.pixelSize: Style.font.body
+                font.bold: true
+                color: root.foreground
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+              }
+
+              Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: root.playerErrorText
+                font.pixelSize: Style.font.caption
+                color: "#cccccc"
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+              }
+
+              Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Retry"
+                iconText: "\uf01e"
+                tooltipText: "Retry playback"
+                foreground: root.foreground
+                accent: root.accent
+                onClicked: {
+                  if (root.service && root.service.retryCurrentRequest)
+                    root.service.retryCurrentRequest()
+                }
+              }
             }
           }
 
@@ -422,7 +558,8 @@ Item {
             anchors.right: parent.right
             height: Style.space(56)
             color: "#cc000000"
-            visible: root.controlsVisible
+            visible: root.controlsVisible && !root.playerErrorText
+            z: 5
 
             Row {
               anchors.fill: parent
@@ -436,15 +573,38 @@ Item {
                 color: root.foreground
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
-                width: parent.width - fsCloseBtn.width - Style.gapsOut
+                width: parent.width - fsTopActions.width - Style.gapsOut
                 anchors.verticalCenter: parent.verticalCenter
               }
 
-              Button {
-                id: fsCloseBtn
-                text: "Exit Fullscreen"
-                iconText: "\uf066"
-                onClicked: root.setFullscreen(false)
+              Row {
+                id: fsTopActions
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.spacing.sm
+
+                QualityMenu {
+                  id: fullscreenQualityMenu
+                  formats: root.service ? root.service.currentFormats : ({})
+                  formatsLoading: root.service ? root.service.formatsLoading : false
+                  activeFormatId: root.service ? root.service.activeFormatId : "auto"
+                  onQualitySelected: function(item) {
+                    if (root.service && root.service.currentItem) {
+                      root.service.playMedia(root.service.currentItem, {
+                        mode: root.service.mode,
+                        formatId: item.id,
+                        formatLabel: item.label,
+                        startPositionMs: root.service.position
+                      })
+                    }
+                  }
+                }
+
+                Button {
+                  id: fsCloseBtn
+                  text: "Exit Fullscreen"
+                  iconText: "\uf066"
+                  onClicked: root.setFullscreen(false)
+                }
               }
             }
           }
@@ -456,7 +616,8 @@ Item {
             anchors.right: parent.right
             height: Style.space(88)
             color: "#cc000000"
-            visible: root.controlsVisible
+            visible: root.controlsVisible && !root.playerErrorText
+            z: 5
 
             Column {
               anchors.bottom: parent.bottom
@@ -467,7 +628,6 @@ Item {
               anchors.bottomMargin: Style.spacing.md
               spacing: Style.spacing.lg
 
-              // Scrubber & Time Bar
               Row {
                 width: parent.width
                 spacing: Style.gapsOut
@@ -486,6 +646,21 @@ Item {
                   radius: height / 2
                   color: "#44ffffff"
                   anchors.verticalCenter: parent.verticalCenter
+                  opacity: (root.service && root.service.seekable) ? 1.0 : 0.45
+
+                  Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: {
+                      var dur = root.service ? root.service.duration : 0
+                      var buf = root.service ? root.service.bufferProgress : 0
+                      if (dur <= 0) return 0
+                      return Math.max(0, parent.width * buf)
+                    }
+                    radius: height / 2
+                    color: "#66ffffff"
+                  }
 
                   Rectangle {
                     anchors.left: parent.left
@@ -503,12 +678,17 @@ Item {
 
                   MouseArea {
                     anchors.fill: parent
+                    enabled: root.service && root.service.seekable && root.service.duration > 0
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: function(mouse) {
+                    function seekAt(mouseX) {
                       if (!root.service || !root.service.duration) return
-                      var ratio = mouse.x / width
-                      var targetMs = ratio * root.service.duration
-                      root.service.seek(targetMs)
+                      var ratio = Math.max(0, Math.min(1, mouseX / width))
+                      root.service.seek(ratio * root.service.duration)
+                      root.revealFullscreenControls()
+                    }
+                    onClicked: function(mouse) { seekAt(mouse.x) }
+                    onPositionChanged: function(mouse) {
+                      if (pressed) seekAt(mouse.x)
                     }
                   }
                 }
@@ -523,7 +703,6 @@ Item {
                 }
               }
 
-              // Transport Buttons
               Row {
                 width: parent.width
                 spacing: Style.gapsOut
@@ -545,6 +724,7 @@ Item {
                     tooltipText: (root.service && root.service.running && !root.service.paused) ? "Pause" : "Play"
                     foreground: root.foreground
                     accent: root.accent
+                    selected: root.service && root.service.running && !root.service.paused
                     onClicked: if (root.service) root.service.togglePlayback()
                   }
 
@@ -593,6 +773,7 @@ Item {
 
                     Button {
                       iconText: (root.service && root.service.muted) ? "\uf6a9" : "\uf028"
+                      tooltipText: "Mute"
                       foreground: root.foreground
                       accent: root.accent
                       onClicked: if (root.service) root.service.toggleMute()
@@ -617,10 +798,15 @@ Item {
                       MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: function(mouse) {
+                        function setVol(mouseX) {
                           if (!root.service) return
-                          var vol = Math.round((mouse.x / width) * 100)
+                          var vol = Math.max(0, Math.min(100, Math.round((mouseX / width) * 100)))
                           root.service.setVolume(vol)
+                          root.revealFullscreenControls()
+                        }
+                        onClicked: function(mouse) { setVol(mouse.x) }
+                        onPositionChanged: function(mouse) {
+                          if (pressed) setVol(mouse.x)
                         }
                       }
                     }
@@ -764,7 +950,8 @@ Item {
                 root.service.playMedia(root.service.currentItem, {
                   mode: root.service.mode,
                   formatId: formatItem.id,
-                  formatLabel: formatItem.label
+                  formatLabel: formatItem.label,
+                  startPositionMs: root.service.position
                 })
               }
             }

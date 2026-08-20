@@ -22,7 +22,9 @@ Item {
 
   readonly property string downloadScriptPath: Qt.resolvedUrl("../scripts/omastream-download").toString().replace(/^file:\/\//, "")
   readonly property string historyPath: {
-    var home = Quickshell.env("HOME") || "/home/yada"
+    var home = Quickshell.env("HOME") || ""
+    if (!home)
+      return ""
     return home + "/.local/share/omastream/download_history.json"
   }
 
@@ -105,7 +107,11 @@ Item {
   }
 
   function revealInFileManager(path) {
-    if (!path) path = (Quickshell.env("HOME") || "/home/yada") + "/Downloads"
+    var home = Quickshell.env("HOME") || ""
+    if (!path) {
+      if (!home) return
+      path = home + "/Downloads"
+    }
     openFolderProcess.command = ["xdg-open", path]
     openFolderProcess.running = true
   }
@@ -207,11 +213,13 @@ Item {
   }
 
   function loadHistory() {
+    if (!root.historyPath) return
     loadHistoryProcess.command = ["cat", root.historyPath]
     loadHistoryProcess.running = true
   }
 
   function saveHistory() {
+    if (!root.historyPath) return
     var toSave = root.jobs.slice(0, 50)
     var jsonText = JSON.stringify(toSave)
     saveHistoryProcess.command = [

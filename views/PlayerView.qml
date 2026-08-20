@@ -72,7 +72,7 @@ Item {
         height: width
         radius: width / 2
         color: "#cc000000"
-        visible: root.service && root.service.loading
+        visible: root.service && root.service.showLoadingOverlay
 
         Text {
           anchors.centerIn: parent

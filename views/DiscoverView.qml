@@ -23,6 +23,18 @@ Item {
   property string activeFilter: "all" 
   property string activeSource: "youtube"
   property bool controlsVisible: true
+  readonly property bool qualityPopupOpen: discoverQualityMenu && discoverQualityMenu.popupOpen
+  readonly property bool playingUnpaused: root.playerService
+    && root.playerService.running
+    && !root.playerService.paused
+
+  function revealPlayerControls() {
+    root.controlsVisible = true
+    if (!root.playingUnpaused || root.qualityPopupOpen || root.playerErrorText)
+      playerControlsTimer.stop()
+    else
+      playerControlsTimer.restart()
+  }
 
   Timer {
     id: playerControlsTimer
@@ -30,9 +42,11 @@ Item {
     running: false
     repeat: false
     onTriggered: {
-      if (root.playerService && !root.playerService.paused && playerSurfaceHover && !playerSurfaceHover.hovered) {
-        root.controlsVisible = false
-      }
+      if (!root.playingUnpaused) return
+      if (root.qualityPopupOpen) return
+      if (root.playerErrorText) return
+      if (playerSurfaceHover && playerSurfaceHover.hovered) return
+      root.controlsVisible = false
     }
   }
 
@@ -40,12 +54,16 @@ Item {
     target: root.playerService
     ignoreUnknownSignals: true
     function onPausedChanged() {
-      if (root.playerService && root.playerService.paused) {
-        root.controlsVisible = true
-        playerControlsTimer.stop()
-      } else {
-        playerControlsTimer.restart()
-      }
+      root.revealPlayerControls()
+    }
+  }
+
+  Connections {
+    target: discoverQualityMenu
+    ignoreUnknownSignals: true
+    function onPopupOpenChanged() {
+      if (discoverQualityMenu.popupOpen)
+        root.revealPlayerControls()
     }
   }
   property color foreground: Color.menu.text
@@ -54,7 +72,18 @@ Item {
   property color faint: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.12)
   property var playerService: null
   property bool playerActive: false
-  readonly property bool isCurrentVideoPlaying: root.playerActive && root.playerService && root.playerService.currentItem && root.selectedVideo && root.playerService.currentItem.id === root.selectedVideo.id
+  readonly property bool isCurrentPlayerItem: root.playerService
+    && root.playerService.currentItem
+    && root.selectedVideo
+    && root.playerService.currentItem.id === root.selectedVideo.id
+  readonly property bool isCurrentPlaybackActive: root.isCurrentPlayerItem && root.playerActive
+  readonly property bool isCurrentVideoPlaying: root.isCurrentPlaybackActive
+  readonly property string playerErrorText: root.isCurrentPlayerItem && root.playerService
+    ? (root.playerService.errorMessage || "")
+    : ""
+  readonly property string playerStatusText: root.isCurrentPlayerItem && root.playerService
+    ? (root.playerService.statusMessage || "")
+    : ""
   property alias playerVideoOutput: embeddedVideoOutput
 
   signal playRequested(var item, var options)
@@ -64,6 +93,10 @@ Item {
   signal customDownloadRequested(var item, var options)
   signal searchTriggered(string query)
   signal clearSearchRequested()
+
+  function focusSearch() {
+    searchInput.forceActiveFocus()
+  }
 
   function clearSearch() {
     searchInput.text = ""
@@ -75,18 +108,38 @@ Item {
     var sorted = MediaModel.sortResults(filtered, root.activeSort)
     root.filteredVideoList = sorted
 
+    var playingId = root.playerService && root.playerService.currentItem
+      ? root.playerService.currentItem.id : ""
     var nextIndex = -1
-    if (root.selectedVideo) {
+    var preferredId = root.selectedVideo ? root.selectedVideo.id : playingId
+
+    if (preferredId) {
       for (var i = 0; i < sorted.length; i++) {
-        if (sorted[i].id === root.selectedVideo.id) {
+        if (sorted[i].id === preferredId) {
           nextIndex = i
           break
         }
       }
     }
-    if (nextIndex === -1 && sorted.length > 0) {
-      nextIndex = 0
+
+    if (nextIndex === -1 && playingId) {
+      for (var j = 0; j < sorted.length; j++) {
+        if (sorted[j].id === playingId) {
+          nextIndex = j
+          break
+        }
+      }
     }
+
+    if (nextIndex === -1 && playingId && root.playerService.currentItem) {
+      root.selectedIndex = -1
+      root.selectedVideo = root.playerService.currentItem
+      return
+    }
+
+    if (nextIndex === -1 && sorted.length > 0)
+      nextIndex = 0
+
     root.selectIndex(nextIndex)
   }
 
@@ -508,7 +561,7 @@ Item {
                   anchors.margins: Style.spacing.sm
                   width: durText.contentWidth + Style.space(12)
                   height: durText.contentHeight + Style.space(4)
-                  radius: Style.radius.sm
+                  radius: Style.cornerRadius
                   color: modelData.liveNow ? "#ef4444" : Color.menu.background
 
                   Text {
@@ -672,8 +725,9 @@ Item {
               id: playerSurfaceHover
               onHoveredChanged: {
                 if (hovered) {
-                  root.controlsVisible = true
-                  if (root.playerService && !root.playerService.paused) playerControlsTimer.restart()
+                  root.revealPlayerControls()
+                } else if (root.playingUnpaused) {
+                  playerControlsTimer.restart()
                 }
               }
             }
@@ -688,36 +742,80 @@ Item {
 
             MouseArea {
               anchors.fill: parent
-              visible: root.isCurrentVideoPlaying
+              hoverEnabled: true
+              visible: root.isCurrentVideoPlaying && !root.playerErrorText
+              cursorShape: Qt.ArrowCursor
+              onPositionChanged: root.revealPlayerControls()
               onClicked: {
+                if (!root.controlsVisible) {
+                  root.revealPlayerControls()
+                  return
+                }
                 if (root.playerService) root.playerService.togglePlayback()
-                parent.forceActiveFocus()
               }
             }
 
-            // Audio Mode Visualization (when playing audio)
+            // Audio Mode Visualization (owned item in audio mode, including loading/error)
             Item {
               anchors.fill: parent
-              visible: root.isCurrentVideoPlaying && root.playerService.mode === "audio"
+              visible: root.isCurrentPlayerItem && root.playerService && root.playerService.mode === "audio"
 
               Image {
-                anchors.centerIn: parent
-                width: Style.space(120)
-                height: Style.space(120)
+                anchors.fill: parent
                 source: (root.playerService && root.playerService.currentItem && root.playerService.currentItem.artworkUrl) || ""
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
-                sourceSize: Qt.size(Style.space(240), Style.space(240))
+                opacity: 0.28
+                sourceSize: Qt.size(Style.space(640), Style.space(360))
+              }
+
+              Rectangle {
+                anchors.fill: parent
+                color: "#99000000"
+              }
+
+              Column {
+                anchors.centerIn: parent
+                spacing: Style.spacing.md
+                width: parent.width * 0.8
+
+                Image {
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  width: Math.min(parent.parent.width * 0.32, parent.parent.height * 0.65)
+                  height: width
+                  source: (root.playerService && root.playerService.currentItem && root.playerService.currentItem.artworkUrl) || ""
+                  fillMode: Image.PreserveAspectCrop
+                  asynchronous: true
+                  sourceSize: Qt.size(Style.space(480), Style.space(480))
+                }
+
+                Rectangle {
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  width: audioModeBadge.implicitWidth + Style.space(16)
+                  height: Style.space(24)
+                  radius: height / 2
+                  color: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.22)
+
+                  Text {
+                    id: audioModeBadge
+                    anchors.centerIn: parent
+                    text: "Audio Mode"
+                    font.pixelSize: Style.font.caption
+                    font.bold: true
+                    color: root.accent
+                    textFormat: Text.PlainText
+                  }
+                }
               }
             }
 
-            // Static Preview Thumbnail (when not playing)
+            // Static Preview Thumbnail (when this item does not own the player)
             Image {
               anchors.fill: parent
               source: (root.selectedVideo && root.selectedVideo.artworkUrl) || ""
               fillMode: Image.PreserveAspectFit
               asynchronous: true
-              visible: !root.isCurrentVideoPlaying
+              visible: !root.isCurrentPlayerItem
             }
 
             // Buffering Indicator
@@ -728,7 +826,10 @@ Item {
               height: Style.space(52)
               radius: height / 2
               color: "#cc000000"
-              visible: root.isCurrentVideoPlaying && (root.playerService.resolving || root.playerService.buffering)
+              visible: root.isCurrentPlayerItem
+                && !root.playerErrorText
+                && root.playerService
+                && root.playerService.showLoadingOverlay
 
               Text {
                 anchors.centerIn: parent
@@ -748,11 +849,87 @@ Item {
               }
             }
 
-            // Play button overlay (only when not playing)
+            // Soft status while resolving fallbacks
+            Text {
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.bottom: parent.bottom
+              anchors.margins: Style.spacing.md
+              anchors.bottomMargin: root.controlsVisible && root.isCurrentVideoPlaying
+                ? Style.space(100) : Style.spacing.md
+              horizontalAlignment: Text.AlignHCenter
+              wrapMode: Text.WordWrap
+              text: root.playerStatusText
+              visible: root.isCurrentPlayerItem && !!root.playerStatusText && !root.playerErrorText
+              color: "#dddddd"
+              font.pixelSize: Style.font.caption
+              textFormat: Text.PlainText
+              z: 3
+            }
+
+            // Playback error overlay (owned item, terminal failure)
+            Rectangle {
+              anchors.fill: parent
+              color: "#cc000000"
+              visible: root.isCurrentPlayerItem && !!root.playerErrorText
+              z: 4
+
+              Column {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - Style.spacing.lg * 2, Style.space(360))
+                spacing: Style.spacing.md
+
+                Text {
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  text: "\uf071"
+                  font.pixelSize: Style.space(28)
+                  color: "#f59e0b"
+                  textFormat: Text.PlainText
+                }
+
+                Text {
+                  width: parent.width
+                  horizontalAlignment: Text.AlignHCenter
+                  text: (root.playerService && root.playerService.mode === "audio")
+                    ? "Unable to play audio"
+                    : "Unable to play media"
+                  font.pixelSize: Style.font.body
+                  font.bold: true
+                  color: root.foreground
+                  textFormat: Text.PlainText
+                  wrapMode: Text.WordWrap
+                }
+
+                Text {
+                  width: parent.width
+                  horizontalAlignment: Text.AlignHCenter
+                  text: root.playerErrorText
+                  font.pixelSize: Style.font.caption
+                  color: "#cccccc"
+                  textFormat: Text.PlainText
+                  wrapMode: Text.WordWrap
+                }
+
+                Button {
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  text: "Retry"
+                  iconText: "\uf01e"
+                  tooltipText: "Retry playback"
+                  foreground: root.foreground
+                  accent: root.accent
+                  onClicked: {
+                    if (root.playerService && root.playerService.retryCurrentRequest)
+                      root.playerService.retryCurrentRequest()
+                  }
+                }
+              }
+            }
+
+            // Play button overlay (only when this item does not own the player)
             Rectangle {
               anchors.fill: parent
               color: Qt.rgba(Color.menu.background.r, Color.menu.background.g, Color.menu.background.b, 0.5)
-              visible: !root.isCurrentVideoPlaying && root.selectedVideo !== null
+              visible: !root.isCurrentPlayerItem && root.selectedVideo !== null
 
               Text {
                 anchors.centerIn: parent
@@ -775,7 +952,7 @@ Item {
               anchors.right: parent.right
               height: Style.space(40)
               color: Qt.rgba(Color.menu.background.r, Color.menu.background.g, Color.menu.background.b, 0.8)
-              visible: root.isCurrentVideoPlaying && root.controlsVisible
+              visible: root.isCurrentVideoPlaying && root.controlsVisible && !root.playerErrorText
 
               Row {
                 anchors.fill: parent
@@ -798,8 +975,10 @@ Item {
                   id: playerTopActions
                   anchors.verticalCenter: parent.verticalCenter
                   spacing: Style.spacing.sm
+                  visible: root.playerService && root.playerService.mode === "video"
 
                   QualityMenu {
+                    id: discoverQualityMenu
                     formats: root.playerService ? root.playerService.currentFormats : ({})
                     formatsLoading: root.playerService ? root.playerService.formatsLoading : false
                     activeFormatId: root.playerService ? root.playerService.activeFormatId : "auto"
@@ -824,7 +1003,7 @@ Item {
               anchors.right: parent.right
               height: Style.space(88)
               color: "#cc000000"
-              visible: root.isCurrentVideoPlaying && root.controlsVisible
+              visible: root.isCurrentVideoPlaying && root.controlsVisible && !root.playerErrorText
 
               Column {
                 anchors.bottom: parent.bottom
@@ -854,6 +1033,21 @@ Item {
                     radius: height / 2
                     color: "#44ffffff"
                     anchors.verticalCenter: parent.verticalCenter
+                    opacity: (root.playerService && root.playerService.seekable) ? 1.0 : 0.45
+
+                    Rectangle {
+                      anchors.left: parent.left
+                      anchors.top: parent.top
+                      anchors.bottom: parent.bottom
+                      width: {
+                        var dur = root.playerService ? root.playerService.duration : 0
+                        var buf = root.playerService ? root.playerService.bufferProgress : 0
+                        if (dur <= 0) return 0
+                        return Math.max(0, parent.width * buf)
+                      }
+                      radius: height / 2
+                      color: "#66ffffff"
+                    }
 
                     Rectangle {
                       anchors.left: parent.left
@@ -871,12 +1065,17 @@ Item {
 
                     MouseArea {
                       anchors.fill: parent
+                      enabled: root.playerService && root.playerService.seekable && root.playerService.duration > 0
                       cursorShape: Qt.PointingHandCursor
-                      onClicked: function(mouse) {
+                      function seekAt(mouseX) {
                         if (!root.playerService || !root.playerService.duration) return
-                        var ratio = mouse.x / width
-                        var targetMs = ratio * root.playerService.duration
-                        root.playerService.seek(targetMs)
+                        var ratio = Math.max(0, Math.min(1, mouseX / width))
+                        root.playerService.seek(ratio * root.playerService.duration)
+                        root.revealPlayerControls()
+                      }
+                      onClicked: function(mouse) { seekAt(mouse.x) }
+                      onPositionChanged: function(mouse) {
+                        if (pressed) seekAt(mouse.x)
                       }
                     }
                   }
@@ -962,6 +1161,7 @@ Item {
 
                       Button {
                         iconText: (root.playerService && root.playerService.muted) ? "\uf6a9" : "\uf028"
+                        tooltipText: "Mute"
                         foreground: root.foreground
                         accent: root.accent
                         onClicked: if (root.playerService) root.playerService.toggleMute()
@@ -1098,7 +1298,7 @@ Item {
           DownloadPicker {
             id: downloadPicker
             parent: root
-            formats: (root.playerService && root.playerService.currentFormats) || ({ streamable: [], downloadVideo: [], downloadAudio: [] })
+            formats: (root.playerService && root.playerService.currentFormats) || ({ playback: [], downloadVideo: [], downloadAudio: [] })
             onDownloadRequested: function(item, opts) {
               root.customDownloadRequested(item, opts)
             }

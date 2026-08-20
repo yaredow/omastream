@@ -57,6 +57,7 @@ def main():
         "--newline",
         "--continue",
         "--no-playlist",
+        "--extractor-args", "youtube:player_client=web_embedded,android,mweb",
     ]
     if browser:
         cmd.extend(["--cookies-from-browser", browser])
