@@ -2,6 +2,8 @@
 
 **YouTube search, playback, and download in Quickshell.**
 
+![omaStream Preview](preview.png)
+
 omaStream brings YouTube Discovery, an embedded player, and a fully-featured download manager directly into the Omarchy shell. Videos play locally through Qt Multimedia and **yt-dlp**, skipping the heavy browser client entirely.
 
 ## Why you will love it
