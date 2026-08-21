@@ -302,7 +302,8 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
 
               Button {
-                iconText: (root.service && root.service.muted) ? "\uf6a9" : "\uf028"
+                iconText: (root.service && root.service.muted) ? "\uf026" : "\uf028"
+                tooltipText: (root.service && root.service.muted) ? "Unmute" : "Mute"
                 foreground: root.foreground
                 accent: root.accent
                 onClicked: if (root.service) root.service.toggleMute()
@@ -312,32 +313,47 @@ Item {
                 width: Style.space(80)
                 height: Style.space(6)
                 radius: height / 2
-                color: root.faint
+                color: "transparent"
+                border.color: "#333333"
+                border.width: 1
                 anchors.verticalCenter: parent.verticalCenter
+
+                Rectangle {
+                  anchors.fill: parent
+                  color: "#222222"
+                  radius: height / 2
+                }
 
                 Rectangle {
                   anchors.left: parent.left
                   anchors.top: parent.top
                   anchors.bottom: parent.bottom
-                  width: Math.max(height, parent.width * ((root.service ? root.service.volume : 70) / 100.0))
+                  width: Math.max(height, parent.width * ((root.service ? ((root.service.muted) ? 0 : root.service.volume) : 70) / 100.0))
                   radius: height / 2
-                  color: root.accent
+                  color: (root.service && root.service.muted) ? "#777777" : Color.accent
                 }
 
                 MouseArea {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
-                  onPositionChanged: function(mouse) {
-                    if (!root.service || !pressed) return
-                    var vol = Math.max(0, Math.min(100, Math.round((mouse.x / width) * 100)))
-                    root.service.setVolume(vol)
-                  }
-                  onClicked: function(mouse) {
+                  function setVol(mouseX) {
                     if (!root.service) return
-                    var vol = Math.max(0, Math.min(100, Math.round((mouse.x / width) * 100)))
+                    var vol = Math.max(0, Math.min(100, Math.round((mouseX / width) * 100)))
                     root.service.setVolume(vol)
+                    if (root.service.muted) root.service.toggleMute()
+                  }
+                  onClicked: function(mouse) { setVol(mouse.x) }
+                  onPositionChanged: function(mouse) {
+                    if (pressed) setVol(mouse.x)
                   }
                 }
+              }
+
+              Text {
+                text: root.service ? (root.service.muted ? "Muted" : Math.round(root.service.volume) + "%") : "70%"
+                font.pixelSize: Style.font.caption
+                color: (root.service && root.service.muted) ? "#777777" : root.dim
+                anchors.verticalCenter: parent.verticalCenter
               }
             }
           }

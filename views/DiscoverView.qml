@@ -1158,51 +1158,58 @@ Item {
                     Row {
                       spacing: Style.spacing.sm
                       anchors.verticalCenter: parent.verticalCenter
-
                       Button {
-                        iconText: (root.playerService && root.playerService.muted) ? "\uf6a9" : "\uf028"
-                        tooltipText: "Mute"
+                        iconText: (root.playerService && root.playerService.muted) ? "\uf026" : "\uf028"
+                        tooltipText: (root.playerService && root.playerService.muted) ? "Unmute" : "Mute"
                         foreground: root.foreground
                         accent: root.accent
                         onClicked: if (root.playerService) root.playerService.toggleMute()
                       }
 
                       Rectangle {
-                        width: Style.space(60)
+                        width: Style.space(80)
                         height: Style.space(6)
                         radius: height / 2
-                        color: root.faint
+                        color: "transparent"
+                        border.color: "#333333"
+                        border.width: 1
                         anchors.verticalCenter: parent.verticalCenter
+
+                        Rectangle {
+                          anchors.fill: parent
+                          color: "#222222"
+                          radius: height / 2
+                        }
 
                         Rectangle {
                           anchors.left: parent.left
                           anchors.top: parent.top
                           anchors.bottom: parent.bottom
-                          width: Math.max(height, parent.width * ((root.playerService ? root.playerService.volume : 70) / 100.0))
+                          width: Math.max(height, parent.width * ((root.playerService ? ((root.playerService.muted) ? 0 : root.playerService.volume) : 70) / 100.0))
                           radius: height / 2
-                          color: root.accent
+                          color: (root.playerService && root.playerService.muted) ? "#777777" : Color.accent
                         }
 
                         MouseArea {
                           anchors.fill: parent
                           cursorShape: Qt.PointingHandCursor
-                          onPositionChanged: function(mouse) {
-                            if (!root.playerService || !pressed) return
-                            var vol = Math.max(0, Math.min(100, Math.round((mouse.x / width) * 100)))
-                            root.playerService.setVolume(vol)
-                          }
-                          onClicked: function(mouse) {
+                          function setVol(mouseX) {
                             if (!root.playerService) return
-                            var vol = Math.max(0, Math.min(100, Math.round((mouse.x / width) * 100)))
+                            var vol = Math.max(0, Math.min(100, Math.round((mouseX / width) * 100)))
                             root.playerService.setVolume(vol)
+                            if (root.playerService.muted) root.playerService.toggleMute()
+                          }
+                          onClicked: function(mouse) { setVol(mouse.x) }
+                          onPositionChanged: function(mouse) {
+                            if (pressed) setVol(mouse.x)
                           }
                         }
                       }
-
+                      
                       Text {
-                        text: (root.playerService ? Math.round(root.playerService.volume) : 70) + "%"
+                        text: root.playerService ? (root.playerService.muted ? "Muted" : Math.round(root.playerService.volume) + "%") : "70%"
                         font.pixelSize: Style.font.caption
-                        color: "#cccccc"
+                        color: (root.playerService && root.playerService.muted) ? "#777777" : root.dim
                         anchors.verticalCenter: parent.verticalCenter
                       }
                     }
