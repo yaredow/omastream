@@ -15,15 +15,20 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
-
       - name: Python Syntax Check
         run: |
-          for script in scripts/omastream-download scripts/omastream-relay scripts/omastream-search scripts/omastream-upload-time; do
-            python3 -m py_compile "$script"
+          for script in $(find scripts -type f); do
+            if head -n 1 "$script" | grep -qi 'python'; then
+              echo "Checking Python script: $script"
+              python3 -m py_compile "$script"
+            fi
           done
 
       - name: ShellCheck Bash Scripts
         run: |
-          for script in scripts/omastream-formats scripts/omastream-resolve scripts/detect-browser.sh; do
-            shellcheck "$script"
+          for script in $(find scripts -type f); do
+            if head -n 1 "$script" | grep -qEi 'bash|sh'; then
+              echo "Checking Shell script: $script"
+              shellcheck "$script"
+            fi
           done
