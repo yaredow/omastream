@@ -24,7 +24,7 @@ fi
 BROWSER=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -x "$SCRIPT_DIR/detect-browser.sh" ]; then
-    BROWSER="$($SCRIPT_DIR/detect-browser.sh || true)"
+    BROWSER="$("$SCRIPT_DIR"/detect-browser.sh || true)"
 fi
 
 args=(yt-dlp --dump-json --skip-download --no-warnings --no-playlist
