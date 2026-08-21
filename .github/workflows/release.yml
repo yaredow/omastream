@@ -12,13 +12,16 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Package Plugin
         run: |
           mkdir omastream
-          # Copy everything except .git and .github
-          rsync -av --exclude='.git' --exclude='.github' --exclude='omastream' ./ omastream/
+          # Package explicit plugin files to prevent shipping cache and dev artifacts
+          cp -r components providers scripts services views BarWidget.qml OmaStreamOverlay.qml PlaybackService.qml manifest.json README.md LICENSE preview.png omastream/
+          # Ensure no pycache is accidentally packaged
+          find omastream -type d -name "__pycache__" -exec rm -rf {} +
+          find omastream -name "*.pyc" -delete
           tar -czvf omastream-plugin.tar.gz omastream
 
       - name: Create GitHub Release

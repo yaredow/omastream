@@ -11,6 +11,8 @@
 
 ## Checklist
 - [ ] I have verified that my code follows the existing style.
-- [ ] I have tested this code locally on the latest Omarchy release.
+- [ ] I have tested this code locally on the latest Omarchy release (or N/A).
+- [ ] I have included screenshots or recordings if this PR alters the UI.
+- [ ] I have run `shellcheck` locally on any modified shell scripts in `scripts/`.
 - [ ] I have not added any massive new dependencies without discussing it first.
 - [ ] My changes do not break existing playback or download functionality.
