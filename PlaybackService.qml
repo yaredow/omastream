@@ -482,15 +482,8 @@ Item {
     if (root.activeTransport === "relay") {
       var base = playUrl.replace(/\?.*$/, "").replace(/\/$/, "")
       root.relayBaseUrl = base
-      var startMs = root.pendingStartPositionMs || 0
-      root.streamStartOffsetMs = startMs
-      if (startMs > 50)
-        playUrl = base + "/?t=" + (startMs / 1000).toFixed(3)
-      else {
-        playUrl = base + "/"
-        root.streamStartOffsetMs = 0
-      }
-      // Content already starts at offset; don't also MediaPlayer-seek.
+      playUrl = base + "/"
+      root.streamStartOffsetMs = 0
       root.pendingStartPositionMs = 0
     } else {
       root.relayBaseUrl = ""
@@ -521,17 +514,7 @@ Item {
       target = Math.min(target, root.duration)
 
     if (root.activeTransport === "relay" && root.relayBaseUrl) {
-      root.streamStartOffsetMs = target
-      root.pendingStartPositionMs = 0
-      root.requestLoading = true
-      player.stop()
-      var url = root.relayBaseUrl + "/"
-      if (target > 50)
-        url = root.relayBaseUrl + "/?t=" + (target / 1000).toFixed(3)
-      else
-        root.streamStartOffsetMs = 0
-      player.source = url
-      player.play()
+      console.log("omaStream: Cannot seek in a live relay stream.")
       return
     }
 

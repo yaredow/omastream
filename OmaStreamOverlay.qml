@@ -16,7 +16,7 @@ Item {
 
   property var shell: null
   property var manifest: null
-  property var service: null
+  property var service: shell ? shell.serviceFor("user.omastream") : null
   property bool opened: false
 
   property string currentMode: "discover" // "discover", "downloads"

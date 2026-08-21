@@ -98,13 +98,14 @@ Item {
             ? Style.selectedFillFor(root.foreground, root.accent)
             : (itemMouse.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : "transparent")
 
-          Row {
+          Item {
             anchors.fill: parent
             anchors.leftMargin: Style.spacing.sm
             anchors.rightMargin: Style.spacing.sm
-            spacing: Style.spacing.sm
 
             Text {
+              id: checkIcon
+              anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
               text: modelData.id === root.activeFormatId ? "\uf00c" : " "
               color: root.accent
@@ -114,6 +115,9 @@ Item {
             }
 
             Text {
+              id: formatLabel
+              anchors.left: checkIcon.right
+              anchors.leftMargin: Style.spacing.sm
               anchors.verticalCenter: parent.verticalCenter
               text: modelData.label || "Auto"
               font.pixelSize: Style.font.body
@@ -122,15 +126,18 @@ Item {
               textFormat: Text.PlainText
             }
 
-            Item { width: Math.max(1, parent.width - parent.children[0].width - parent.children[1].implicitWidth - parent.children[3].implicitWidth - Style.spacing.sm * 3); height: 1 }
-
             Text {
+              anchors.left: formatLabel.right
+              anchors.leftMargin: Style.spacing.sm
+              anchors.right: parent.right
               anchors.verticalCenter: parent.verticalCenter
               text: modelData.detail || ""
               font.pixelSize: Style.font.caption
               color: root.dim
               visible: (modelData.detail || "") !== ""
               textFormat: Text.PlainText
+              elide: Text.ElideRight
+              horizontalAlignment: Text.AlignRight
             }
           }
 

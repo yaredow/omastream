@@ -33,6 +33,8 @@ def yt_base_cmd():
         "yt-dlp",
         "--no-warnings",
         "--no-playlist",
+        "--extractor-args",
+        "youtube:player_client=web_embedded,android,mweb",
         *cookie_args(),
     ]
 
@@ -162,8 +164,6 @@ class StreamingHandler(BaseHTTPRequestHandler):
 
             def start_downloader(fmt: str, path: str):
                 cmd = yt_base_cmd()
-                if start_sec > 0.05:
-                    cmd.extend(["--download-sections", f"*{int(start_sec)}-inf"])
                 cmd.extend(["-f", fmt, "-o", path, "--no-part", yt_url])
                 
                 proc = subprocess.Popen(
