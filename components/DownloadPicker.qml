@@ -114,7 +114,7 @@ QQC.Popup {
             Text {
               text: modelData.resolution || modelData.label || "Best"
               font.pixelSize: Style.font.body
-              font.bold: true
+              font.bold: false
               color: root.foreground
               textFormat: Text.PlainText
             }
