@@ -35,7 +35,7 @@ The bar widget uses middle click for play/pause, right click to stop, and the mo
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/USERNAME/omastream.git --enable
+omarchy plugin add https://github.com/yaredow/omastream.git --enable
 ```
 
 Requires **Omarchy 4**, **Python 3**, **ffmpeg**, **jq**, and **yt-dlp**:
