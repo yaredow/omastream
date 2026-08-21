@@ -772,8 +772,8 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
 
                     Button {
-                      iconText: (root.service && root.service.muted) ? "\uf6a9" : "\uf028"
-                      tooltipText: "Mute"
+                      iconText: (root.service && root.service.muted) ? "\uf026" : "\uf028"
+                      tooltipText: (root.service && root.service.muted) ? "Unmute" : "Mute"
                       foreground: root.foreground
                       accent: root.accent
                       onClicked: if (root.service) root.service.toggleMute()
@@ -783,16 +783,24 @@ Item {
                       width: Style.space(100)
                       height: Style.space(6)
                       radius: height / 2
-                      color: root.faint
+                      color: "transparent"
+                      border.color: "#333333"
+                      border.width: 1
                       anchors.verticalCenter: parent.verticalCenter
+
+                      Rectangle {
+                        anchors.fill: parent
+                        color: "#222222"
+                        radius: height / 2
+                      }
 
                       Rectangle {
                         anchors.left: parent.left
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
-                        width: Math.max(height, parent.width * ((root.service ? root.service.volume : 70) / 100.0))
+                        width: Math.max(height, parent.width * ((root.service ? ((root.service.muted) ? 0 : root.service.volume) : 70) / 100.0))
                         radius: height / 2
-                        color: Color.accent
+                        color: (root.service && root.service.muted) ? "#777777" : Color.accent
                       }
 
                       MouseArea {
@@ -802,6 +810,7 @@ Item {
                           if (!root.service) return
                           var vol = Math.max(0, Math.min(100, Math.round((mouseX / width) * 100)))
                           root.service.setVolume(vol)
+                          if (root.service.muted) root.service.toggleMute()
                           root.revealFullscreenControls()
                         }
                         onClicked: function(mouse) { setVol(mouse.x) }
@@ -812,9 +821,9 @@ Item {
                     }
 
                     Text {
-                      text: (root.service ? Math.round(root.service.volume) : 70) + "%"
+                      text: root.service ? (root.service.muted ? "Muted" : Math.round(root.service.volume) + "%") : "70%"
                       font.pixelSize: Style.font.body
-                      color: "#cccccc"
+                      color: (root.service && root.service.muted) ? "#777777" : "#cccccc"
                       anchors.verticalCenter: parent.verticalCenter
                     }
                   }
