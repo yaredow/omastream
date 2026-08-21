@@ -1,0 +1,48 @@
+name: Bug Report
+description: Create a report to help us improve omaStream
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! Please provide as much detail as possible.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How do we reproduce this?
+      placeholder: |
+        1. Open Discover View
+        2. Search for 'xyz'
+        3. Click on the second result
+        4. See error
+    validations:
+      required: true
+  - type: input
+    id: omarchy_version
+    attributes:
+      label: Omarchy Version
+      description: Which version of Omarchy are you running? (e.g., 4.0.0)
+    validations:
+      required: true
+  - type: input
+    id: ytdlp_version
+    attributes:
+      label: yt-dlp Version
+      description: Run `yt-dlp --version` in your terminal.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Please paste any relevant shell logs or console output here.
+      render: shell

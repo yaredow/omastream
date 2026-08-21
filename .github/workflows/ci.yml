@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install qt6-declarative-dev
+        run: sudo apt-get update && sudo apt-get install -y qt6-declarative-dev
+
+      - name: QML Lint
+        run: find . -name "*.qml" | xargs qmllint
+
+      - name: Python Syntax Check
+        run: find . -name "*.py" -o -name "omastream-relay" -o -name "omastream-search" -o -name "omastream-upload-time" -o -name "omastream-formats" -o -name "omastream-resolve" -o -name "omastream-download" | xargs -I {} python3 -m py_compile {}
+
