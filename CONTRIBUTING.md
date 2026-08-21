@@ -16,7 +16,7 @@ Once cloned, any changes you make will be instantly testable. Just run `omarchy 
 ## Submitting Changes
 
 1. **Fork** the repository and create your branch from `master`.
-2. **Test** your changes locally. Ensure that both video and audio modes still play smoothly and downloads still function.
+2. **Test** your changes locally. Ensure that the core features of the plugin continue to work correctly and that your changes do not introduce any regressions.
 3. **Commit** your changes with clear, descriptive commit messages.
 4. **Push** to your fork and submit a Pull Request.
 
